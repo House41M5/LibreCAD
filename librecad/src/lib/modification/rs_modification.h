@@ -278,6 +278,7 @@ public:
                             RS_AtomicEntity& segment2);
 
 private:
+    bool isTopLevel(const RS_Entity* entity1, const RS_Entity* entity2) const;
     void copyEntity(RS_Entity* e, const RS_Vector& ref, bool cut);
     void copyLayers(RS_Entity* e);
     void copyBlocks(RS_Entity* e);

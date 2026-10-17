@@ -2494,6 +2494,17 @@ bool RS_Modification::stretch(const RS_Vector& firstCorner,
  * @param entity2 Second entity of the corner.
  * @param data Lengths and trim flag.
  */
+/**
+ * Bevel and round pick entities with ResolveAll, so they can catch a line inside
+ * a hatch, insert or dimension. Their trimmed clones would be added to this
+ * container still pointing at that inner parent, which RS_Hatch::update() later
+ * deletes: every isVisible() on the clone then reads freed memory (crash in
+ * RS_Entity::isUndone). Only entities directly in this container are editable.
+ */
+bool RS_Modification::isTopLevel(const RS_Entity* entity1, const RS_Entity* entity2) const {
+    return entity1->getParent() == m_container && entity2->getParent() == m_container;
+}
+
 bool RS_Modification::bevel(const RS_Vector& coord1, RS_AtomicEntity* entity1,
                             const RS_Vector& coord2, RS_AtomicEntity* entity2,
                             RS_BevelData& data) {
@@ -2546,6 +2557,12 @@ bool RS_Modification::bevel(const RS_Vector& coord1, RS_AtomicEntity* entity1,
         //baseContainer = entity1->getParent();
         isPolyline = true;
 //        isClosedPolyline = ((RS_Polyline*)entity1)->isClosed();
+    }
+
+    if (!isPolyline && !isTopLevel(entity1, entity2)) {
+        RS_DEBUG->print(RS_Debug::D_WARNING,
+                        "RS_Modification::bevel: entity is part of a hatch, insert or dimension");
+        return false;
     }
 
     RS_DEBUG->print("RS_Modification::bevel: getting intersection");
@@ -2806,6 +2823,12 @@ bool RS_Modification::round(const RS_Vector& coord,
 
         isPolyline = true;
 //        isClosedPolyline = ((RS_Polyline*)entity1->getParent())->isClosed();
+    }
+
+    if (!isPolyline && !isTopLevel(entity1, entity2)) {
+        RS_DEBUG->print(RS_Debug::D_WARNING,
+                        "RS_Modification::round: entity is part of a hatch, insert or dimension");
+        return false;
     }
 
     // create 2 tmp parallels
