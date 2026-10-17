@@ -278,7 +278,7 @@ RS_Commands::RS_Commands() {
         {
             {{"gapline", QObject::tr("gapline", "line gap")}},
             {{"gl", QObject::tr("gl", "line gap")}},
-            RS2::ActionModifyBreakDivide
+            RS2::ActionModifyLineGap
         },
         // draw parallel line
         {
