@@ -31,7 +31,15 @@
 #include <iosfwd>
 #include <QStringList>
 #include <QMap>
+#include <QHash>
+#include <QPainterPath>
+#include <QSharedPointer>
 #include "rs_blocklist.h"
+
+class QRawFont;
+class RS_EntityContainer;
+class RS_GraphicView;
+class RS_Painter;
 
 /**
  * Class for representing a font. This is implemented as a RS_Graphic
@@ -99,6 +107,19 @@ public:
         return &letterList;
     }
     RS_Block* findLetter(const QString& name);
+
+    // Thai display shaping (Kai 2026-10-17): picks Windows-PUA alternate glyphs
+    // (U+F700-F71D) by context; the stored text stays standard Unicode.
+    static QString shapeThai(const QString& text);
+    // Thai above/below marks (and their PUA alternates) take no horizontal space.
+    static bool isThaiNonSpacing(QChar ch);
+    // Filled letters (Kai 2026-10-17): a TrueType file with the same base name next to
+    // the .lff (e.g. thsarabunnew.ttf) is drawn filled at the LFF letter positions.
+    // The LFF glyphs stay for layout, borders, snapping and missing glyphs.
+    // @return false when this font has no TrueType companion (caller draws strokes).
+    bool drawOutline(RS_EntityContainer* text, RS_Painter* painter, RS_GraphicView* view);
+    // Advance width of a letter in LFF units from the TrueType companion; -1 when none.
+    double outlineAdvance(const QString& name);
     //    RS_Block* findLetter(const QString& name) {
     //		return letterList.find(name);
     //	}
@@ -117,6 +138,10 @@ private:
     void readCXF(QString path);
     void readLFF(QString path);
     RS_Block* generateLffFont(const QString& key);
+    void loadOutline(const QString& lffPath);
+    QPainterPath outlineGlyph(const QString& name);
+    void drawOutlineLetters(RS_EntityContainer* container, RS_Painter* painter,
+                            RS_GraphicView* view);
 
 private:
     //raw lff font file list, not processed into blocks yet
@@ -154,6 +179,11 @@ private:
 
     //! Default line spacing factor for this font
     double lineSpacingFactor = 0.;
+
+    //! TrueType companion: glyph paths scaled to LFF units (cap height 9, y up)
+    QSharedPointer<QRawFont> outlineFont;
+    double outlineScale = 1.;
+    QHash<QString, QPainterPath> outlineCache;
 };
 
 #endif

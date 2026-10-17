@@ -33,8 +33,15 @@
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QTextCodec>
+#include <QFileInfo>
+#include <QRawFont>
+#include <QTransform>
 
 #include "rs_font.h"
+#include "rs_entitycontainer.h"
+#include "rs_graphicview.h"
+#include "rs_insert.h"
+#include "rs_painter.h"
 #include "rs_arc.h"
 #include "rs_line.h"
 #include "rs_polyline.h"
@@ -148,8 +155,10 @@ bool RS_Font::loadFont() {
 
     if (path.contains(".cxf"))
         readCXF(path);
-    if (path.contains(".lff"))
+    if (path.contains(".lff")) {
         readLFF(path);
+        loadOutline(path);
+    }
 
     RS_Block* bk = letterList.find(QChar(0xfffd));
 	if (!bk) {
@@ -500,11 +509,170 @@ RS_Block* RS_Font::generateLffFont(const QString& key){
     }
 }
 
+namespace {
+// Thai character classes (U+0E00 block)
+bool thaiConsonant(ushort c) { return c >= 0x0E01 && c <= 0x0E2E; }
+bool thaiAscender(ushort c) { return c == 0x0E1B || c == 0x0E1D || c == 0x0E1F || c == 0x0E2C; } // ป ฝ ฟ ฬ
+bool thaiUpperVowel(ushort c) { return c == 0x0E31 || (c >= 0x0E34 && c <= 0x0E37) || c == 0x0E47 || c == 0x0E4D; }
+bool thaiTone(ushort c) { return c >= 0x0E48 && c <= 0x0E4C; }   // ่ ้ ๊ ๋ ์
+bool thaiLowerVowel(ushort c) { return c >= 0x0E38 && c <= 0x0E3A; } // ุ ู ฺ
+
+ushort thaiUpperVowelLeft(ushort c) {
+    switch (c) {
+    case 0x0E31: return 0xF710;
+    case 0x0E47: return 0xF712;
+    case 0x0E4D: return 0xF711;
+    default: return 0xF701 + (c - 0x0E34); // ิ ี ึ ื
+    }
+}
+}
+
+/**
+ * Contextual glyph selection for Thai, as the legacy Windows Thai PUA fonts do:
+ * tone marks sit low unless an upper vowel (or SARA AM) shares the cell, marks shift
+ * left over the tall consonants ป ฝ ฟ ฬ, lower vowels drop under ฎ ฏ, and ญ ฐ lose
+ * their tails before a lower vowel. One QChar in, one QChar out, so indices and
+ * escape sequences (MText \P, \S ...) are unaffected.
+ */
+QString RS_Font::shapeThai(const QString& text) {
+    QString out = text;
+    int base = -1;          // index of the current Thai consonant, -1 = none
+    bool upper = false;     // an upper vowel/tone already sits on the consonant
+    for (int i = 0; i < text.length(); ++i) {
+        const ushort c = text.at(i).unicode();
+        if (thaiConsonant(c)) {
+            base = i;
+            upper = false;
+            continue;
+        }
+        if (c < 0x0E30 || c > 0x0E4E) {   // not a Thai vowel/mark: break the cluster
+            base = -1;
+            continue;
+        }
+        if (base < 0)
+            continue;
+        const ushort b = text.at(base).unicode();
+        if (thaiUpperVowel(c)) {
+            if (thaiAscender(b))
+                out[i] = QChar(thaiUpperVowelLeft(c));
+            upper = true;
+        } else if (thaiTone(c)) {
+            const bool high = upper || (i + 1 < text.length() && text.at(i + 1).unicode() == 0x0E33);
+            if (thaiAscender(b))
+                out[i] = QChar((high ? 0xF713 : 0xF705) + (c - 0x0E48));
+            else if (!high)
+                out[i] = QChar(0xF70A + (c - 0x0E48));
+            upper = true;
+        } else if (thaiLowerVowel(c)) {
+            if (b == 0x0E0E || b == 0x0E0F)          // ฎ ฏ: drop the vowel below the tail
+                out[i] = QChar(0xF718 + (c - 0x0E38));
+            else if (b == 0x0E0D)                     // ญ without tail
+                out[base] = QChar(0xF70F);
+            else if (b == 0x0E10)                     // ฐ without tail
+                out[base] = QChar(0xF700);
+        } else if (c != 0x0E33) {
+            // spacing vowel (ะ า เ ...) ends the stack on this consonant
+            base = -1;
+        }
+    }
+    return out;
+}
+
+bool RS_Font::isThaiNonSpacing(QChar ch) {
+    const ushort c = ch.unicode();
+    return c == 0x0E31 || (c >= 0x0E34 && c <= 0x0E3A) || (c >= 0x0E47 && c <= 0x0E4E)
+           || (c >= 0xF701 && c <= 0xF70E) || (c >= 0xF710 && c <= 0xF71A);
+}
+
 RS_Block* RS_Font::findLetter(const QString& name) {
     RS_Block* ret= letterList.find(name);
 	if (ret) return ret;
     return generateLffFont(name);
 
+}
+
+void RS_Font::loadOutline(const QString& lffPath) {
+    QFileInfo fi(lffPath);
+    QString ttf = fi.absolutePath() + "/" + fi.completeBaseName() + ".ttf";
+    if (!QFileInfo::exists(ttf))
+        return;
+    auto raw = QSharedPointer<QRawFont>::create(ttf, 1000.0, QFont::PreferNoHinting);
+    if (!raw->isValid())
+        return;
+    // same scale as ttf2lff.py: top of "H" = 9 LFF units
+    QVector<quint32> h = raw->glyphIndexesForString("H");
+    double capTop = h.size() == 1 ? -raw->pathForGlyph(h[0]).boundingRect().top() : 0.;
+    if (capTop <= 0.)
+        return;
+    outlineFont = raw;
+    outlineScale = 9.0 / capTop;
+    LC_LOG << "RS_Font::loadOutline: filled letters from " << ttf;
+}
+
+QPainterPath RS_Font::outlineGlyph(const QString& name) {
+    auto it = outlineCache.constFind(name);
+    if (it != outlineCache.constEnd())
+        return it.value();
+    QPainterPath p;
+    QVector<quint32> idx = outlineFont->glyphIndexesForString(name);
+    if (idx.size() == 1 && idx[0] != 0) {
+        // QRawFont paths are y-down
+        p = QTransform(outlineScale, 0., 0., -outlineScale, 0., 0.)
+                .map(outlineFont->pathForGlyph(idx[0]));
+    }
+    outlineCache.insert(name, p);
+    return p;
+}
+
+double RS_Font::outlineAdvance(const QString& name) {
+    if (!outlineFont)
+        return -1.;
+    QVector<quint32> idx = outlineFont->glyphIndexesForString(name);
+    if (idx.size() != 1 || idx[0] == 0)
+        return -1.;
+    QVector<QPointF> adv = outlineFont->advancesForGlyphIndexes(idx);
+    return adv.size() == 1 ? adv[0].x() * outlineScale : -1.;
+}
+
+bool RS_Font::drawOutline(RS_EntityContainer* text, RS_Painter* painter, RS_GraphicView* view) {
+    if (!outlineFont)
+        return false;
+    const RS_Pen pen = painter->getPen();
+    const QBrush brush = painter->brush();
+    painter->setBrush(pen.getColor());
+    painter->disablePen();
+    drawOutlineLetters(text, painter, view);
+    painter->setBrush(brush);
+    painter->setPen(pen);
+    return true;
+}
+
+void RS_Font::drawOutlineLetters(RS_EntityContainer* container, RS_Painter* painter,
+                                 RS_GraphicView* view) {
+    for (RS_Entity* e: *container) {
+        if (e->rtti() == RS2::EntityInsert) {
+            auto letter = static_cast<RS_Insert*>(e);
+            QPainterPath glyph = outlineGlyph(letter->getName());
+            if (glyph.isEmpty()) {
+                // no TrueType glyph: stroke the LFF letter (e.g. U+FFFD box)
+                painter->setPen(RS_Color(painter->brush().color()));
+                double offset = 0.;
+                letter->draw(painter, view, offset);
+                painter->disablePen();
+                continue;
+            }
+            // letter block -> world: scale, rotate, move; world -> screen is affine
+            const RS_Vector ip = letter->getInsertionPoint();
+            const RS_Vector scale = letter->getScale();
+            const double angle = letter->getAngle();
+            const RS_Vector o = view->toGui(ip);
+            const RS_Vector ux = view->toGui(ip + RS_Vector::polar(scale.x, angle)) - o;
+            const RS_Vector uy = view->toGui(ip + RS_Vector::polar(scale.y, angle + M_PI_2)) - o;
+            painter->drawPath(QTransform(ux.x, ux.y, uy.x, uy.y, o.x, o.y).map(glyph));
+        } else if (e->isContainer()) {
+            drawOutlineLetters(static_cast<RS_EntityContainer*>(e), painter, view);
+        }
+    }
 }
 /**
  * Dumps the fonts data to stdout.
