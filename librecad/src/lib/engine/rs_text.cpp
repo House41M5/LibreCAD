@@ -281,6 +281,9 @@ void RS_Text::update() {
     //   height: 9.0
     // Rotation, scaling and centering is done later
 
+    // Thai: contextual glyphs for display only (data.text is unchanged)
+    const QString shaped = RS_Font::shapeThai(data.text);
+
     // For every letter:
     for (int i=0; i<(int)data.text.length(); ++i) {
         // Space:
@@ -288,7 +291,10 @@ void RS_Text::update() {
             letterPos+=space;
         } else {
             // One Letter:
-            QString letterText = QString(data.text.at(i));
+            QString letterText = QString(shaped.at(i));
+            if (shaped.at(i) != data.text.at(i) && font->findLetter(letterText) == NULL) {
+                letterText = QString(data.text.at(i));   // font has no alternate glyph
+            }
             if (font->findLetter(letterText) == NULL) {
                 RS_DEBUG->print("RS_Text::update: missing font for letter( %s ), replaced it with QChar(0xfffd)",qPrintable(letterText));
                 letterText = QChar(0xfffd);
@@ -313,9 +319,17 @@ void RS_Text::update() {
             letterWidth = RS_Vector(letter->getMax().x-letterPos.x, 0.0);
             if (letterWidth.x < 0)
                 letterWidth.x = -letterSpace.x;
+            // TrueType companion: step by the font's advance (swash letters overhang it)
+            const double advance = font->outlineAdvance(letterText);
+            if (advance >= 0.)
+                letterWidth.x = advance - letterSpace.x;
 
 //            oneLine->addEntity(letter);
             addEntity(letter);
+
+            // Thai above/below marks stack on the previous letter
+            if (RS_Font::isThaiNonSpacing(data.text.at(i)))
+                continue;
 
             // next letter position:
             letterPos += letterWidth;
@@ -549,6 +563,11 @@ void RS_Text::draw(RS_Painter* painter, RS_GraphicView* view, double& /*patternO
             painter->drawRect(view->toGui(getMin()), view->toGui(getMax()));
             return;
         }
+    }
+
+    RS_Font* font = RS_FONTLIST->requestFont(data.style);
+    if (font && font->drawOutline(this, painter, view)) {
+        return;
     }
 
     foreach (auto e, entities)

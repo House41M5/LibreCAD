@@ -207,6 +207,9 @@ void RS_MText::update() {
   }
   int lineCounter{0};
 
+  // Thai: contextual glyphs for display only (same length as data.text)
+  const QString shaped = RS_Font::shapeThai(data.text);
+
   // Every single text line gets stored in this entity container
   // so we can move the whole line around easily:
   RS_EntityContainer *oneLine{new RS_EntityContainer(this)};
@@ -356,8 +359,11 @@ void RS_MText::update() {
     // if char is not handled
     // fall-through
     default: {
-      // One Letter:
-      addLetter(*oneLine, data.text.at(i), *font, letterSpace, letterPos);
+      // One Letter (Thai: contextual glyph, fall back if the font lacks it):
+      QChar letter = shaped.at(i);
+      if (letter != data.text.at(i) && nullptr == font->findLetter(QString(letter)))
+        letter = data.text.at(i);
+      addLetter(*oneLine, letter, *font, letterSpace, letterPos);
       break;
     } // outer default
     } // outer switch (data.text.at(i).unicode())
@@ -434,12 +440,22 @@ void RS_MText::addLetter(RS_EntityContainer &oneLine, QChar letter,
   letterEntity->update();
   letterEntity->forcedCalculateBorders();
 
+  // Thai above/below marks stack on the previous letter: no advance
+  if (RS_Font::isThaiNonSpacing(letter)) {
+    oneLine.addEntity(letterEntity);
+    return;
+  }
+
   // Add spacing, if the font is actually wider than word spacing
   double actualWidth = letterEntity->getMax().x - letterEntity->getMin().x;
   if (actualWidth >= font.getWordSpacing() + RS_TOLERANCE) {
       const double spacing = std::max(1., letterSpace.x);
       actualWidth = font.getWordSpacing() + std::ceil((actualWidth - font.getWordSpacing())/spacing) * spacing;
   }
+  // TrueType companion: step by the font's advance (swash letters overhang it)
+  const double advance = font.outlineAdvance(letterText);
+  if (advance >= 0.)
+    actualWidth = advance - std::abs(letterSpace.x);
 
   RS_Vector letterWidth = {actualWidth, 0.};
   // right-to-left text support
@@ -638,6 +654,10 @@ void RS_MText::draw(RS_Painter *painter, RS_GraphicView *view,
       return;
     }
   }
+
+  RS_Font *font = RS_FONTLIST->requestFont(data.style);
+  if (font && font->drawOutline(this, painter, view))
+    return;
 
   double patternOffset = 0.0;
 
