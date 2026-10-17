@@ -34,6 +34,7 @@
 #include <QDebug>
 #include <QSplashScreen>
 #include <QSettings>
+#include <QLocale>
 #include <QMessageBox>
 #include <QFileInfo>
 
@@ -95,6 +96,15 @@ int main(int argc, char** argv)
     QCoreApplication::setOrganizationName("LibreCAD");
     QCoreApplication::setApplicationName("LibreCAD");
     QCoreApplication::setApplicationVersion(XSTR(LC_VERSION));
+
+    // Kai 2026-10-17: Qt 5.15 on Windows th-TH takes LOCALE_SNATIVEDIGITS even when the
+    // user disabled native digits (NumShape=1), so spin boxes showed Thai digits (๑๒๓).
+    // Number widgets follow the default locale; the system locale (DXF code page) is untouched.
+    {
+        QLocale numbers(QLocale::English, QLocale::UnitedStates);
+        numbers.setNumberOptions(QLocale::OmitGroupSeparator);
+        QLocale::setDefault(numbers);
+    }
 
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 7, 0))
     QGuiApplication::setDesktopFileName("librecad.desktop");
