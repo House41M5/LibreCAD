@@ -2929,7 +2929,9 @@ bool RS_Modification::bevel(const RS_Vector& coord1, RS_AtomicEntity* entity1,
         bevel->setPen(baseContainer->getPen());
 
         // insert bevel at the right position:
-        if (trimmed1 == baseContainer->first() && trimmed2 == baseContainer->last()){
+        // idx2-idx1 > 1: in a two-segment polyline the segments are also first and last,
+        // but they are consecutive, not the closing pair
+        if (idx2 - idx1 > 1 && trimmed1 == baseContainer->first() && trimmed2 == baseContainer->last()){
             //bevel are from last and first segments, add at the end
             if (trimmed2->getEndpoint().distanceTo(bevel->getStartpoint())>1.0e-4) {
                 bevel->reverse();
