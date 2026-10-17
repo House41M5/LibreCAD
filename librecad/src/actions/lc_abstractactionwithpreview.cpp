@@ -853,6 +853,13 @@ bool LC_AbstractActionWithPreview::checkMayExpandEntity(const RS_Entity *e, cons
                 if (!entityName.isEmpty()){
                     commandMessage(entityName + LC_ActionDrawSliceDivide::tr(" is not divided as it is part of polyline. Expand polyline first."));
                 }
+            } else if (pContainer != container) {
+                // caught with ResolveAll inside a hatch, insert or dimension: the owner frees its
+                // children (RS_Hatch::update), so the undo list must never hold this entity
+                mayDivide = false;
+                if (!entityName.isEmpty()){
+                    commandMessage(entityName + LC_ActionDrawSliceDivide::tr(" is not divided as it is part of a hatch, block or dimension."));
+                }
             } else {
                 mayDivide = true;
             }

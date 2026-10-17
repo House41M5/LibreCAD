@@ -220,13 +220,14 @@ void LC_ActionModifyLineJoin::doAfterTrigger(){
 
 void LC_ActionModifyLineJoin::performTriggerDeletions(){
     // check whether original lines should be deleted
+    // lines caught inside a polyline, hatch, insert or dimension are owned there and are kept
     if (removeOriginalLines){
         // proceed line 1
-        if (line1EdgeMode == EDGE_EXTEND_TRIM){
+        if (line1EdgeMode == EDGE_EXTEND_TRIM && line1->getParent() == container){
             deleteEntityUndoable(line1);
         }
         // proceed line 2
-        if (line2EdgeMode == EDGE_EXTEND_TRIM){
+        if (line2EdgeMode == EDGE_EXTEND_TRIM && line2->getParent() == container){
             deleteEntityUndoable(line2);
         }
     }
