@@ -38,8 +38,10 @@ class PidLinesDlg : public QDialog
     Q_OBJECT
 
 public:
-    //! names = pattern names (file name without pid_), labels = what the list shows
-    PidLinesDlg(const QStringList &names, const QStringList &labels, QWidget *parent = nullptr);
+    //! names = pattern names (file name without pid_), labels = what the list shows,
+    //! spacings = pidlines.ini default spacing per pattern (0 = none)
+    PidLinesDlg(const QStringList &names, const QStringList &labels,
+                const QList<double> &spacings, QWidget *parent = nullptr);
 
     //! index into the pattern list, -1 = remove symbols only
     int pattern() const;
@@ -53,6 +55,8 @@ private slots:
 
 private:
     int count;
+    QStringList names;
+    QList<double> spacings;
     QComboBox *patternBox;
     QDoubleSpinBox *spacingBox;
     QDoubleSpinBox *scaleBox;

@@ -16,7 +16,8 @@
  *   Documents/LibreCAD/pidlines (the latter wins on the same name). The symbol
  *   is drawn around (0,0) with the line running along +X. pidlines.ini in the
  *   same folders gives each pattern a label, the gap (mm at scale 1) cut out
- *   under each symbol, and line=0 for patterns drawn without the line.
+ *   under each symbol, a default spacing, and line=0 for patterns drawn
+ *   without the line. Text patterns (--CWS--) come from make_text_patterns.py.
  * Re-place / remove: clicking one piece of a cut line is enough. Pieces are
  *   joined back through the symbols sitting in their gaps (pidgeom.h), so the
  *   original line comes back before the new pattern is applied.
@@ -64,6 +65,7 @@ struct Pattern {
     QString label;
     QString file;           // absolute path of the .dxf
     double gap = 0;         // line cut out under each symbol, mm at scale 1
+    double spacing = 0;     // default spacing in the dialog, 0 = none
     bool keepLine = true;   // false: the pattern is drawn without the line
 };
 
@@ -118,6 +120,7 @@ QList<Pattern> loadPatterns() {
             s.beginGroup(p.name);
             if (s.contains("label")) p.label = s.value("label").toString();
             if (s.contains("gap")) p.gap = std::max(0.0, s.value("gap").toDouble());
+            if (s.contains("spacing")) p.spacing = std::max(0.0, s.value("spacing").toDouble());
             if (s.contains("line")) p.keepLine = s.value("line").toInt() != 0;
             s.endGroup();
         }
@@ -237,8 +240,9 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
     Q_UNUSED(cmd);
     const QList<Pattern> patterns = loadPatterns();
     QStringList names, labels;
-    for (const Pattern &p: patterns) { names << p.name; labels << p.label; }
-    PidLinesDlg dlg(names, labels, parent);
+    QList<double> spacings;
+    for (const Pattern &p: patterns) { names << p.name; labels << p.label; spacings << p.spacing; }
+    PidLinesDlg dlg(names, labels, spacings, parent);
     if (dlg.exec() != QDialog::Accepted)
         return;
     dlg.saveSettings();
@@ -400,8 +404,9 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
 
 /*****************************/
 
-PidLinesDlg::PidLinesDlg(const QStringList &names, const QStringList &labels, QWidget *parent)
-    : QDialog(parent), count(names.size())
+PidLinesDlg::PidLinesDlg(const QStringList &names, const QStringList &labels,
+                         const QList<double> &spacings, QWidget *parent)
+    : QDialog(parent), count(names.size()), names(names), spacings(spacings)
 {
     setWindowTitle(QString::fromUtf8("เส้นสัญญาณ P&ID"));
     QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
@@ -453,12 +458,21 @@ PidLinesDlg::PidLinesDlg(const QStringList &names, const QStringList &labels, QW
     patternChanged();
 }
 
+// spacing follows the pattern: last one used for it, else its pidlines.ini
+// default, else the last spacing used at all
 void PidLinesDlg::patternChanged()
 {
-    bool removeOnly = pattern() < 0;
+    const int i = pattern();
+    const bool removeOnly = i < 0;
     spacingBox->setEnabled(!removeOnly);
     scaleBox->setEnabled(!removeOnly);
     cutBox->setEnabled(!removeOnly);
+    if (removeOnly) return;
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
+    double sp = s.value("patternSpacing/" + names.at(i), 0.0).toDouble();
+    if (sp <= 0) sp = spacings.at(i);
+    if (sp <= 0) sp = s.value("spacing", 15.0).toDouble();
+    spacingBox->setValue(sp);
 }
 
 int PidLinesDlg::pattern() const
@@ -476,6 +490,8 @@ void PidLinesDlg::saveSettings() const
     QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
     s.setValue("pattern", patternBox->currentData().toString());
     s.setValue("spacing", spacingBox->value());
+    if (pattern() >= 0)
+        s.setValue("patternSpacing/" + names.at(pattern()), spacingBox->value());
     s.setValue("scale", scaleBox->value());
     s.setValue("cut", cutBox->isChecked());
 }
