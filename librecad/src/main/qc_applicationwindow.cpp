@@ -2830,6 +2830,11 @@ bool QC_ApplicationWindow::slotFileExport(const QString& name,
     }
     gv.setContainer(graphic);
     gv.zoomAuto(false);
+	// two passes like the view and printing: drawEntityPlain() draws each
+	// entity only in the pass that matches its selection state
+	painter.setDrawSelectedOnly(false);
+	gv.drawEntity(&painter, gv.getContainer());
+	painter.setDrawSelectedOnly(true);
 	gv.drawEntity(&painter, gv.getContainer());
 
     // end the picture output

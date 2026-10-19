@@ -1229,13 +1229,20 @@ void RS_GraphicView::drawEntity(RS_Painter *painter, RS_Entity* e, double& patte
 /**
  * Draws an entity.
  * The painter must be initialized and all the attributes (pen) must be set.
+ *
+ * Views draw in two passes, unselected then selected (screen, print, export).
+ * Containers pass the filter so that their children are filtered one by one,
+ * but a polyline draws its segments itself (RS_Polyline::draw): filter it as
+ * a whole, or it is drawn in both passes and its anti-aliased edges (arcs,
+ * slanted segments) come out heavier than those of other entities.
  */
 void RS_GraphicView::drawEntityPlain(RS_Painter *painter, RS_Entity* e, double& patternOffset) {
 	if (!e) {
 		return;
 	}
 
-	if (!e->isContainer() && (e->isSelected()!=painter->shouldDrawSelected())) {
+	if ((!e->isContainer() || e->rtti() == RS2::EntityPolyline)
+	        && e->isSelected() != painter->shouldDrawSelected()) {
 		return;
 	}
 
@@ -1247,7 +1254,8 @@ void RS_GraphicView::drawEntityPlain(RS_Painter *painter, RS_Entity* e) {
 		return;
 	}
 
-	if (!e->isContainer() && (e->isSelected()!=painter->shouldDrawSelected())) {
+	if ((!e->isContainer() || e->rtti() == RS2::EntityPolyline)
+	        && e->isSelected() != painter->shouldDrawSelected()) {
 		return;
 	}
 	double patternOffset(0.);
