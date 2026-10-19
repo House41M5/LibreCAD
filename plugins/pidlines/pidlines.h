@@ -2,8 +2,8 @@
 /*  pidlines.h - P&ID signal line decorator for LibreCAD (Kai build)         */
 /*                                                                           */
 /*  Places a symbol block (//, X, L, o ...) at even spacing along selected   */
-/*  lines, arcs and polylines. Each symbol is a DXF file in a pattern folder */
-/*  so new patterns need no rebuild.                                         */
+/*  lines, arcs and polylines and cuts the line under each symbol. Each      */
+/*  symbol is a DXF file in a pattern folder so new patterns need no rebuild.*/
 /*                                                                           */
 /*  This library is free software, licensed under the terms of the GNU       */
 /*  General Public License as published by the Free Software Foundation,     */
@@ -15,7 +15,6 @@
 
 #include "qc_plugininterface.h"
 #include <QDialog>
-#include <QFileInfo>
 
 class QComboBox;
 class QDoubleSpinBox;
@@ -39,24 +38,25 @@ class PidLinesDlg : public QDialog
     Q_OBJECT
 
 public:
-    PidLinesDlg(const QList<QFileInfo> &patterns, QWidget *parent = nullptr);
+    //! names = pattern names (file name without pid_), labels = what the list shows
+    PidLinesDlg(const QStringList &names, const QStringList &labels, QWidget *parent = nullptr);
 
     //! index into the pattern list, -1 = remove symbols only
     int pattern() const;
     double spacing() const;
     double scale() const;
-    bool replaceExisting() const;
+    bool cutLine() const;
     void saveSettings() const;
 
 private slots:
     void patternChanged();
 
 private:
-    QList<QFileInfo> patterns;
+    int count;
     QComboBox *patternBox;
     QDoubleSpinBox *spacingBox;
     QDoubleSpinBox *scaleBox;
-    QCheckBox *replaceBox;
+    QCheckBox *cutBox;
 };
 
 #endif // PIDLINES_H

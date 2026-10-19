@@ -8,153 +8,124 @@
 
 /*
  * Context: P&ID signal lines (ISA-5.1: pneumatic //, capillary X, hydraulic L,
- *   data link o) cannot be LibreCAD line types -- the line type list is fixed
- *   in the core and has no embedded symbols. This plugin inserts one block per
- *   symbol along the selected line/arc/polyline instead, so the result is plain
- *   DXF that every CAD program shows the same way.
+ *   data link o, ...) cannot be LibreCAD line types -- the line type list is
+ *   fixed in the core and has no embedded symbols. This plugin inserts one block
+ *   per symbol along the selected line/arc/polyline and cuts the line under each
+ *   symbol, so the result is plain DXF that every CAD program shows the same way.
  * Patterns: every pid_*.dxf in <LibreCAD>/resources/pidlines and in
  *   Documents/LibreCAD/pidlines (the latter wins on the same name). The symbol
- *   is drawn around (0,0) with the line running along +X; the block name is the
- *   file name, so "re-place" finds old symbols by the pid_ prefix.
+ *   is drawn around (0,0) with the line running along +X. pidlines.ini in the
+ *   same folders gives each pattern a label, the gap (mm at scale 1) cut out
+ *   under each symbol, and line=0 for patterns drawn without the line.
+ * Re-place / remove: clicking one piece of a cut line is enough. Pieces are
+ *   joined back through the symbols sitting in their gaps (pidgeom.h), so the
+ *   original line comes back before the new pattern is applied.
  * Gotchas:
  *   - Needs the patched Doc_plugin_interface::getSelect (Kai build). Stock
  *     2.2.1.x returns false after every selection, so nothing happens.
  *   - A block already in the drawing is reused as is: editing the .dxf later
  *     does not update drawings that already contain that block.
- *   - Old symbols are found by lying on the selected path. If the line was
- *     moved or rotated, the old symbols are off the path and stay; delete them
- *     by hand.
+ *   - A line edited by hand after cutting (a piece moved or trimmed) no longer
+ *     joins up; its leftover symbols have to be deleted by hand.
+ *   - Plugin_Entity::updateData on a polyline resets "closed" unless CLOSEPOLY
+ *     is passed, so applyPen always passes it.
  */
 
 #include <cmath>
+#include <vector>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QLabel>
 #include <QMap>
 #include <QMessageBox>
+#include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
 #include "document_interface.h"
 #include "pidlines.h"
+#include "pidgeom.h"
+
+using namespace pidgeom;
 
 namespace {
 
-const double kPi = 3.14159265358979323846;
 const QString kPrefix = QStringLiteral("pid_");
 
-struct Seg {
-    bool arc = false;
-    QPointF a, b;          // line
-    QPointF c;             // arc center
-    double r = 0, a0 = 0, sweep = 0;   // arc: start angle, signed sweep (CCW > 0)
-    double len = 0;
+struct Pattern {
+    QString name;           // file name without pid_ and .dxf, lower case
+    QString label;
+    QString file;           // absolute path of the .dxf
+    double gap = 0;         // line cut out under each symbol, mm at scale 1
+    bool keepLine = true;   // false: the pattern is drawn without the line
 };
 
-struct Path {
-    QList<Seg> segs;
+struct Pen {
+    int color = -1;
+    QString ltype = QStringLiteral("BYLAYER");
+    QString lwidth = QStringLiteral("BYLAYER");
+    bool byLayer() const {
+        return color == -1 && ltype == QLatin1String("BYLAYER")
+                && (lwidth == QLatin1String("BYLAYER") || lwidth == QLatin1String("BYDEFAULT"));
+    }
+};
+
+struct Ent {                // a line, arc or polyline of the drawing
+    Plug_Entity *e = nullptr;
+    qulonglong id = 0;
+    Path path;
     QString layer;
-    double length() const {
-        double l = 0;
-        for (const Seg &s: segs) l += s.len;
-        return l;
-    }
+    Pen pen;
 };
 
-double norm2pi(double a) {
-    a = std::fmod(a, 2 * kPi);
-    return a < 0 ? a + 2 * kPi : a;
+struct Sym {                // a pid_ symbol insert
+    Plug_Entity *e = nullptr;
+    QPointF p;
+    double scale = 1;
+};
+
+QStringList patternDirs() {
+    return QStringList()
+            << QCoreApplication::applicationDirPath() + "/resources/pidlines"
+            << QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/LibreCAD/pidlines";
 }
 
-Seg lineSeg(QPointF a, QPointF b) {
-    Seg s;
-    s.a = a; s.b = b;
-    s.len = std::hypot(b.x() - a.x(), b.y() - a.y());
-    return s;
-}
-
-Seg arcSeg(QPointF c, double r, double a0, double sweep) {
-    Seg s;
-    s.arc = true;
-    s.c = c; s.r = r; s.a0 = a0; s.sweep = sweep;
-    s.len = std::fabs(sweep) * r;
-    return s;
-}
-
-// polyline vertex p1 -> p2 with bulge b (b = tan(sweep/4), > 0 = CCW)
-Seg bulgeSeg(QPointF p1, QPointF p2, double b) {
-    double dx = p2.x() - p1.x(), dy = p2.y() - p1.y();
-    double c = std::hypot(dx, dy);
-    if (std::fabs(b) < 1e-9 || c < 1e-12)
-        return lineSeg(p1, p2);
-    double sweep = 4 * std::atan(b);
-    // center sits on the chord's left normal at (c/2)(1-b^2)/(2b), signed by b
-    double d = (c / 2) * (1 - b * b) / (2 * b);
-    QPointF mid((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2);
-    QPointF ctr(mid.x() - dy / c * d, mid.y() + dx / c * d);
-    double r = std::hypot(p1.x() - ctr.x(), p1.y() - ctr.y());
-    return arcSeg(ctr, r, std::atan2(p1.y() - ctr.y(), p1.x() - ctr.x()), sweep);
-}
-
-// point and tangent angle at distance t along one segment
-void segAt(const Seg &s, double t, QPointF *p, double *ang) {
-    if (!s.arc) {
-        double f = s.len > 0 ? t / s.len : 0;
-        *p = QPointF(s.a.x() + (s.b.x() - s.a.x()) * f, s.a.y() + (s.b.y() - s.a.y()) * f);
-        *ang = std::atan2(s.b.y() - s.a.y(), s.b.x() - s.a.x());
-        return;
-    }
-    double a = s.a0 + (s.len > 0 ? s.sweep * t / s.len : 0);
-    *p = QPointF(s.c.x() + s.r * std::cos(a), s.c.y() + s.r * std::sin(a));
-    *ang = a + (s.sweep >= 0 ? kPi / 2 : -kPi / 2);
-}
-
-void pathAt(const Path &path, double t, QPointF *p, double *ang) {
-    for (int i = 0; i < path.segs.size(); ++i) {
-        const Seg &s = path.segs.at(i);
-        if (t <= s.len || i == path.segs.size() - 1) {
-            segAt(s, qMin(t, s.len), p, ang);
-            return;
+QList<Pattern> loadPatterns() {
+    QMap<QString, Pattern> byName;      // sorted by name; a later folder overrides
+    const QStringList dirs = patternDirs();
+    for (const QString &dir: dirs) {
+        const QFileInfoList files = QDir(dir).entryInfoList(QStringList() << "pid_*.dxf", QDir::Files);
+        for (const QFileInfo &f: files) {
+            Pattern &p = byName[f.completeBaseName().mid(kPrefix.size()).toLower()];
+            p.name = f.completeBaseName().mid(kPrefix.size()).toLower();
+            p.file = f.absoluteFilePath();
+            if (p.label.isEmpty()) p.label = p.name;
         }
-        t -= s.len;
     }
-}
-
-double segDist(const Seg &s, QPointF p) {
-    if (!s.arc) {
-        double dx = s.b.x() - s.a.x(), dy = s.b.y() - s.a.y();
-        double l2 = dx * dx + dy * dy;
-        double f = l2 > 0 ? ((p.x() - s.a.x()) * dx + (p.y() - s.a.y()) * dy) / l2 : 0;
-        f = qBound(0.0, f, 1.0);
-        return std::hypot(p.x() - s.a.x() - f * dx, p.y() - s.a.y() - f * dy);
+    for (const QString &dir: dirs) {
+        const QString ini = dir + "/pidlines.ini";
+        if (!QFileInfo::exists(ini)) continue;
+        QSettings s(ini, QSettings::IniFormat);
+        s.setIniCodec("UTF-8");
+        for (Pattern &p: byName) {
+            s.beginGroup(p.name);
+            if (s.contains("label")) p.label = s.value("label").toString();
+            if (s.contains("gap")) p.gap = std::max(0.0, s.value("gap").toDouble());
+            if (s.contains("line")) p.keepLine = s.value("line").toInt() != 0;
+            s.endGroup();
+        }
     }
-    double ang = std::atan2(p.y() - s.c.y(), p.x() - s.c.x());
-    double off = norm2pi(s.sweep >= 0 ? ang - s.a0 : s.a0 - ang);
-    if (off <= std::fabs(s.sweep) + 1e-12)
-        return std::fabs(std::hypot(p.x() - s.c.x(), p.y() - s.c.y()) - s.r);
-    QPointF e1, e2; double dummy;
-    segAt(s, 0, &e1, &dummy);
-    segAt(s, s.len, &e2, &dummy);
-    return qMin(std::hypot(p.x() - e1.x(), p.y() - e1.y()),
-                std::hypot(p.x() - e2.x(), p.y() - e2.y()));
+    return byName.values();
 }
 
-double pathDist(const Path &path, QPointF p) {
-    double d = 1e300;
-    for (const Seg &s: path.segs) d = qMin(d, segDist(s, p));
-    return d;
-}
-
-bool toPath(Plug_Entity *e, Path *path) {
-    QHash<int, QVariant> d;
-    e->getData(&d);
-    path->layer = d.value(DPI::LAYER).toString();
+bool toPath(Plug_Entity *e, const QHash<int, QVariant> &d, Path *path) {
     switch (d.value(DPI::ETYPE).toInt()) {
     case DPI::LINE:
         path->segs << lineSeg(QPointF(d.value(DPI::STARTX).toDouble(), d.value(DPI::STARTY).toDouble()),
@@ -175,7 +146,8 @@ bool toPath(Plug_Entity *e, Path *path) {
         e->getPolylineData(&v);
         for (int i = 0; i + 1 < v.size(); ++i)
             path->segs << bulgeSeg(v.at(i).point, v.at(i + 1).point, v.at(i).bulge);
-        if (d.value(DPI::CLOSEPOLY).toInt() && v.size() > 2) {
+        path->closed = d.value(DPI::CLOSEPOLY).toBool();
+        if (path->closed && v.size() > 2) {
             Seg s = bulgeSeg(v.last().point, v.first().point, v.last().bulge);
             if (s.len > 1e-9) path->segs << s;
         }
@@ -184,27 +156,65 @@ bool toPath(Plug_Entity *e, Path *path) {
     default:
         return false;
     }
-    // drop zero-length pieces so pathAt never divides by them
-    for (int i = path->segs.size() - 1; i >= 0; --i)
-        if (path->segs.at(i).len < 1e-9) path->segs.removeAt(i);
+    path->segs = simplify(path->segs);
     return !path->segs.isEmpty();
 }
 
-QList<QFileInfo> findPatterns() {
-    QStringList dirs;
-    dirs << QCoreApplication::applicationDirPath() + "/resources/pidlines"
-         << QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/LibreCAD/pidlines";
-    QMap<QString, QFileInfo> byName;   // later dir overrides, sorted by name
-    for (const QString &dir: dirs) {
-        const QFileInfoList files = QDir(dir).entryInfoList(QStringList() << "pid_*.dxf", QDir::Files);
-        for (const QFileInfo &f: files)
-            byName.insert(f.completeBaseName().toLower(), f);
+double rad2deg(double a) { return a * 180.0 / kPi; }
+
+// Adds `segs` as one entity on the current layer: LINE, ARC or POLYLINE.
+// Returns true for a polyline (applyPen needs to know).
+bool addSegs(Document_Interface *doc, QList<Seg> segs, bool closed) {
+    if (closed && segs.size() == 1) {
+        // a loop merged into one 360° arc: a polyline needs two vertices (bulge of 360° is infinite)
+        const Seg s = segs.takeFirst();
+        segs << subSeg(s, 0, s.len / 2) << subSeg(s, s.len / 2, s.len);
     }
-    return byName.values();
+    if (segs.size() == 1 && !closed) {
+        const Seg &s = segs.first();
+        if (!s.arc) {
+            QPointF a = s.a, b = s.b;
+            doc->addLine(&a, &b);
+        } else {
+            // addArc is counter-clockwise only
+            double a1 = s.sweep > 0 ? s.a0 : s.a0 + s.sweep;
+            QPointF c = s.c;
+            doc->addArc(&c, s.r, rad2deg(a1), rad2deg(a1 + std::fabs(s.sweep)));
+        }
+        return false;
+    }
+    std::vector<Plug_VertexData> v;
+    for (const Seg &s: segs) v.emplace_back(segStart(s), bulgeOf(s));
+    if (!closed) v.emplace_back(segEnd(segs.last()), 0.0);
+    doc->addPolyline(v, closed);
+    return true;
 }
 
-QString patternLabel(const QFileInfo &f) {
-    return f.completeBaseName().mid(kPrefix.size());
+// The last entities added get the source line's own colour/line type/width.
+// polyClosed holds, in adding order, -1 for non-polylines and 0/1 for polylines.
+void applyPen(Document_Interface *doc, const Pen &pen, const QList<int> &polyClosed) {
+    if (pen.byLayer() || polyClosed.isEmpty()) return;
+    QList<Plug_Entity *> all;
+    doc->getAllEntities(&all, false);
+    const int first = all.size() - polyClosed.size();
+    for (int i = std::max(0, first); i < all.size(); ++i) {
+        QHash<int, QVariant> d;
+        d.insert(DPI::COLOR, pen.color);
+        d.insert(DPI::LTYPE, pen.ltype);
+        d.insert(DPI::LWIDTH, pen.lwidth);
+        int pc = polyClosed.at(i - first);
+        if (pc >= 0) d.insert(DPI::CLOSEPOLY, pc == 1);
+        all.at(i)->updateData(&d);
+    }
+    qDeleteAll(all);
+}
+
+// keep letter-like symbols (L) upright: fold the angle into (-90°, 90°]
+double upright(double ang) {
+    ang = norm2pi(ang);
+    if (ang > kPi / 2 + 1e-9 && ang <= 3 * kPi / 2 + 1e-9) return ang - kPi;
+    if (ang > 3 * kPi / 2) return ang - 2 * kPi;
+    return ang;
 }
 
 } // namespace
@@ -225,8 +235,10 @@ PluginCapabilities LC_PidLines::getCapabilities() const
 void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd)
 {
     Q_UNUSED(cmd);
-    const QList<QFileInfo> patterns = findPatterns();
-    PidLinesDlg dlg(patterns, parent);
+    const QList<Pattern> patterns = loadPatterns();
+    QStringList names, labels;
+    for (const Pattern &p: patterns) { names << p.name; labels << p.label; }
+    PidLinesDlg dlg(names, labels, parent);
     if (dlg.exec() != QDialog::Accepted)
         return;
     dlg.saveSettings();
@@ -235,97 +247,170 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
     const double scale = dlg.scale();
 
     QList<Plug_Entity *> sel;
-    if (!doc->getSelect(&sel, QString::fromUtf8("เลือกเส้น/โค้ง/polyline แล้วกด Enter"))) {
-        return;   // Esc or nothing selected
-    }
-    QList<Path> paths;
+    if (!doc->getSelect(&sel, QString::fromUtf8("เลือกเส้น/โค้ง/polyline แล้วกด Enter")))
+        return;     // Esc or nothing selected
+    QSet<qulonglong> selected;
     int skipped = 0;
     for (Plug_Entity *e: sel) {
-        Path p;
-        if (toPath(e, &p)) paths << p; else ++skipped;
+        QHash<int, QVariant> d;
+        e->getData(&d);
+        int t = d.value(DPI::ETYPE).toInt();
+        if (t == DPI::LINE || t == DPI::ARC || t == DPI::POLYLINE)
+            selected << d.value(DPI::EID).toULongLong();
+        else if (!(t == DPI::INSERT && d.value(DPI::BLKNAME).toString().startsWith(kPrefix, Qt::CaseInsensitive)))
+            ++skipped;      // symbols caught in a window selection are expected, not reported
     }
     qDeleteAll(sel);
     doc->unselectEntities();
-    if (paths.isEmpty()) {
-        QMessageBox::information(parent, name(),
-            QString::fromUtf8("ในที่เลือกไม่มี line / arc / polyline"));
+    if (selected.isEmpty()) {
+        QMessageBox::information(parent, name(), QString::fromUtf8("ในที่เลือกไม่มี line / arc / polyline"));
         return;
     }
 
-    int removed = 0;
-    if (dlg.replaceExisting() || pat < 0) {
-        QList<Plug_Entity *> all;
-        doc->getAllEntities(&all, false);
-        for (Plug_Entity *e: all) {
-            QHash<int, QVariant> d;
-            e->getData(&d);
-            if (d.value(DPI::ETYPE).toInt() != DPI::INSERT
-                    || !d.value(DPI::BLKNAME).toString().startsWith(kPrefix, Qt::CaseInsensitive))
-                continue;
-            QPointF ip(d.value(DPI::STARTX).toDouble(), d.value(DPI::STARTY).toDouble());
-            for (const Path &p: paths) {
-                if (pathDist(p, ip) < 1e-4) {
-                    doc->removeEntity(e);
-                    ++removed;
-                    break;
-                }
-            }
+    // the whole drawing: pieces of a cut line may lie outside the selection
+    QList<Plug_Entity *> all;
+    doc->getAllEntities(&all, false);
+    QList<Ent> ents;
+    QList<Sym> syms;
+    for (Plug_Entity *e: all) {
+        QHash<int, QVariant> d;
+        e->getData(&d);
+        int t = d.value(DPI::ETYPE).toInt();
+        if (t == DPI::INSERT) {
+            if (!d.value(DPI::BLKNAME).toString().startsWith(kPrefix, Qt::CaseInsensitive)) continue;
+            Sym s;
+            s.e = e;
+            s.p = QPointF(d.value(DPI::STARTX).toDouble(), d.value(DPI::STARTY).toDouble());
+            s.scale = std::fabs(d.value(DPI::XSCALE, 1.0).toDouble());
+            syms << s;
+            continue;
         }
-        qDeleteAll(all);
+        Ent en;
+        if (!toPath(e, d, &en.path)) continue;
+        en.e = e;
+        en.id = d.value(DPI::EID).toULongLong();
+        en.layer = d.value(DPI::LAYER).toString();
+        en.pen.color = d.value(DPI::COLOR).toInt();
+        en.pen.ltype = d.value(DPI::LTYPE).toString();
+        en.pen.lwidth = d.value(DPI::LWIDTH).toString();
+        ents << en;
     }
 
-    int placed = 0;
+    QList<Path> paths;
+    for (const Ent &en: ents) paths << en.path;
+    QList<QPointF> symPts;
+    QList<double> reach;
+    for (const Sym &s: syms) { symPts << s.p; reach << 10.0 * std::max(1.0, s.scale); }
+    QVector<Links> links;
+    const QVector<bool> linked = linkPaths(paths, symPts, reach, &links);
+
+    QString block;
     if (pat >= 0) {
-        const QFileInfo &file = patterns.at(pat);
-        QString block = file.completeBaseName();
+        const QFileInfo file(patterns.at(pat).file);
+        block = file.completeBaseName();
         if (!doc->getAllBlocks().contains(block)) {
             block = doc->addBlockfromFromdisk(file.absoluteFilePath());
             if (block.isEmpty()) {
+                qDeleteAll(all);
                 QMessageBox::warning(parent, name(),
                     QString::fromUtf8("เปิดไฟล์สัญลักษณ์ไม่ได้:\n%1").arg(file.absoluteFilePath()));
                 return;
             }
         }
-        const QString prevLayer = doc->getCurrentLayer();
-        for (const Path &p: paths) {
-            const double len = p.length();
-            // symbols centered on the path: n gaps of `spacing`, equal margins at both ends
-            int n = qMax(1, int(std::floor(len / spacing + 1e-9)));
-            double first = (len - (n - 1) * spacing) / 2;
-            doc->setLayer(p.layer);
-            for (int k = 0; k < n; ++k) {
-                QPointF pt; double ang;
-                pathAt(p, first + k * spacing, &pt, &ang);
-                // keep letter-like symbols (L) upright: fold the angle into (-90°, 90°]
-                ang = norm2pi(ang);
-                if (ang > kPi / 2 + 1e-9 && ang <= 3 * kPi / 2 + 1e-9) ang -= kPi;
-                else if (ang > 3 * kPi / 2) ang -= 2 * kPi;
-                doc->addInsert(block, pt, QPointF(scale, scale), ang);
-                ++placed;
-            }
-        }
-        doc->setLayer(prevLayer);
     }
+
+    const QString prevLayer = doc->getCurrentLayer();
+    QSet<int> done, removedSyms;
+    int lines = 0, placed = 0, removed = 0, uncut = 0;
+    for (int i = 0; i < ents.size(); ++i) {
+        if (!selected.contains(ents.at(i).id) || done.contains(i)) continue;
+        const Chain ch = walkChain(paths, links, i);
+        for (int m: ch.members) done << m;
+        const Ent &src = ents.at(ch.members.first());
+        ++lines;
+
+        // old symbols: the ones in the gaps and the ones sitting on the line
+        QSet<int> old;
+        for (int s: ch.gapSymbols) old << s;
+        for (int s = 0; s < syms.size(); ++s) {
+            if (linked[s] || old.contains(s)) continue;
+            for (int m: ch.members)
+                if (pathDist(paths.at(m), syms.at(s).p) < kTol) { old << s; break; }
+        }
+        for (int s: old) {
+            if (removedSyms.contains(s)) continue;
+            doc->removeEntity(syms.at(s).e);
+            removedSyms << s;
+            ++removed;
+        }
+
+        const bool hadGaps = !ch.gapSymbols.isEmpty();
+        auto removeLine = [&]() { for (int m: ch.members) doc->removeEntity(ents.at(m).e); };
+        QList<int> added;   // applyPen bookkeeping, in adding order
+        doc->setLayer(src.layer);
+
+        if (pat < 0) {      // remove symbols only: a cut line is joined back
+            if (hadGaps) {
+                removeLine();
+                added << (addSegs(doc, ch.merged.segs, ch.merged.closed) ? int(ch.merged.closed) : -1);
+            }
+            applyPen(doc, src.pen, added);
+            continue;
+        }
+
+        const Pattern &pt = patterns.at(pat);
+        const double gap = (dlg.cutLine() && pt.keepLine) ? pt.gap * scale : 0;
+        const QList<Station> st = planStations(ch.merged, spacing, gap);
+        bool anyCut = false;
+        for (const Station &s: st) {
+            anyCut = anyCut || s.cut;
+            if (gap > 0 && !s.cut) ++uncut;
+        }
+        if (!pt.keepLine) {
+            removeLine();
+        } else if (anyCut) {
+            removeLine();
+            for (const QList<Seg> &piece: pieces(ch.merged, st, gap))
+                added << (addSegs(doc, piece, false) ? 0 : -1);
+        } else if (hadGaps) {
+            removeLine();
+            added << (addSegs(doc, ch.merged.segs, ch.merged.closed) ? int(ch.merged.closed) : -1);
+        }   // else the line stays as it is
+        for (const Station &s: st) {
+            QPointF p; double ang;
+            pathAt(ch.merged, s.t, &p, &ang);
+            doc->addInsert(block, p, QPointF(scale, scale), upright(ang));
+            added << -1;
+            ++placed;
+        }
+        applyPen(doc, src.pen, added);
+    }
+    doc->setLayer(prevLayer);
+    qDeleteAll(all);
     doc->updateView();
-    if (skipped)
+
+    QStringList notes;
+    if (skipped) notes << QString::fromUtf8("ข้ามวัตถุที่ไม่ใช่เส้น %1 ชิ้น").arg(skipped);
+    if (uncut) notes << QString::fromUtf8("สัญลักษณ์ %1 จุดวางบนเส้นโดยไม่ตัด (ใกล้มุม/ปลายเส้น หรือระยะห่างแคบกว่าช่อง)").arg(uncut);
+    if (!notes.isEmpty())
         QMessageBox::information(parent, name(),
-            QString::fromUtf8("วางสัญลักษณ์ %1 จุด บน %2 เส้น · ลบของเดิม %3\nข้ามวัตถุที่ไม่ใช่เส้น %4 ชิ้น")
-                .arg(placed).arg(paths.size()).arg(removed).arg(skipped));
+            QString::fromUtf8("%1 เส้น · วางสัญลักษณ์ %2 · ลบของเดิม %3\n").arg(lines).arg(placed).arg(removed)
+            + notes.join("\n"));
 }
 
 /*****************************/
 
-PidLinesDlg::PidLinesDlg(const QList<QFileInfo> &pats, QWidget *parent)
-    : QDialog(parent), patterns(pats)
+PidLinesDlg::PidLinesDlg(const QStringList &names, const QStringList &labels, QWidget *parent)
+    : QDialog(parent), count(names.size())
 {
     setWindowTitle(QString::fromUtf8("เส้นสัญญาณ P&ID"));
     QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
 
     patternBox = new QComboBox;
-    for (const QFileInfo &f: patterns)
-        patternBox->addItem(patternLabel(f), f.absoluteFilePath());
-    patternBox->addItem(QString::fromUtf8("(ลบสัญลักษณ์อย่างเดียว)"));
-    int idx = patternBox->findText(s.value("pattern").toString());
+    for (int i = 0; i < names.size(); ++i)
+        patternBox->addItem(labels.at(i), names.at(i));
+    patternBox->addItem(QString::fromUtf8("(ลบสัญลักษณ์อย่างเดียว · ต่อเส้นกลับ)"));
+    int idx = patternBox->findData(s.value("pattern").toString());
     patternBox->setCurrentIndex(idx >= 0 ? idx : 0);
 
     spacingBox = new QDoubleSpinBox;
@@ -338,19 +423,21 @@ PidLinesDlg::PidLinesDlg(const QList<QFileInfo> &pats, QWidget *parent)
     scaleBox->setDecimals(2);
     scaleBox->setValue(s.value("scale", 1.0).toDouble());
 
-    replaceBox = new QCheckBox(QString::fromUtf8("ลบสัญลักษณ์เดิมบนเส้นที่เลือกก่อน (วางใหม่)"));
-    replaceBox->setChecked(s.value("replace", true).toBool());
+    cutBox = new QCheckBox(QString::fromUtf8("ตัดเส้นตรงสัญลักษณ์"));
+    cutBox->setChecked(s.value("cut", true).toBool());
 
     QFormLayout *form = new QFormLayout;
     form->addRow(QString::fromUtf8("ลาย:"), patternBox);
     form->addRow(QString::fromUtf8("ระยะห่าง:"), spacingBox);
     form->addRow(QString::fromUtf8("สเกลสัญลักษณ์:"), scaleBox);
-    form->addRow(replaceBox);
+    form->addRow(cutBox);
 
     QLabel *hint = new QLabel(QString::fromUtf8(
-        "ตกลงแล้ว: เลือกเส้นบนแบบ แล้วกด Enter\n"
+        "ตกลงแล้ว: เลือกเส้นบนแบบ แล้วกด Enter (เส้นที่ตัดแล้ว คลิกท่อนเดียวพอ)\n"
+        "สัญลักษณ์เดิมบนเส้นที่เลือกจะถูกแทนที่\n"
         "เพิ่มลายเอง: วาดสัญลักษณ์รอบจุด (0,0) ให้เส้นวิ่งตามแกน X\n"
-        "แล้วเซฟเป็น pid_<ชื่อ>.dxf ใน Documents\\LibreCAD\\pidlines"));
+        "เซฟเป็น pid_<ชื่อ>.dxf ใน Documents\\LibreCAD\\pidlines\n"
+        "ช่องที่ตัดและชื่อที่แสดง: pidlines.ini ในโฟลเดอร์เดียวกัน"));
     hint->setWordWrap(true);
 
     QDialogButtonBox *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -371,24 +458,24 @@ void PidLinesDlg::patternChanged()
     bool removeOnly = pattern() < 0;
     spacingBox->setEnabled(!removeOnly);
     scaleBox->setEnabled(!removeOnly);
-    replaceBox->setEnabled(!removeOnly);
+    cutBox->setEnabled(!removeOnly);
 }
 
 int PidLinesDlg::pattern() const
 {
     int i = patternBox->currentIndex();
-    return i < patterns.size() ? i : -1;
+    return i < count ? i : -1;
 }
 
 double PidLinesDlg::spacing() const { return spacingBox->value(); }
 double PidLinesDlg::scale() const { return scaleBox->value(); }
-bool PidLinesDlg::replaceExisting() const { return replaceBox->isChecked(); }
+bool PidLinesDlg::cutLine() const { return cutBox->isChecked(); }
 
 void PidLinesDlg::saveSettings() const
 {
     QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
-    s.setValue("pattern", patternBox->currentText());
+    s.setValue("pattern", patternBox->currentData().toString());
     s.setValue("spacing", spacingBox->value());
     s.setValue("scale", scaleBox->value());
-    s.setValue("replace", replaceBox->isChecked());
+    s.setValue("cut", cutBox->isChecked());
 }

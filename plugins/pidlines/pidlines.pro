@@ -20,7 +20,7 @@ win32-msvc: QMAKE_CXXFLAGS += /utf-8
 
 SOURCES += pidlines.cpp
 
-HEADERS += pidlines.h
+HEADERS += pidlines.h pidgeom.h
 
 # Installation Directory
 win32 {
