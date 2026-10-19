@@ -3,7 +3,13 @@
 Each symbol is drawn around (0,0) with the signal line running along +X,
 on layer 0 with colour BYBLOCK so it takes the colour of the insert's layer.
 Sizes are mm at plugin scale 1 (ISA-5.1 shapes, sizes are our choice).
+
+Not here on purpose: electric signal = the built-in Dash line type; process
+and instrument-supply lines = plain solid lines. Sources disagree on two
+shapes -- hydraulic (L vs single slash) and mechanical link (filled circles vs
+double line); L and filled circles follow the ISA-5.1-based references.
 """
+import math
 import sys
 from pathlib import Path
 import ezdxf
@@ -29,4 +35,22 @@ save("hydraulic", lambda m, a: (m.add_line((-0.6, 1.25), (-0.6, -1.25), dxfattri
                                 m.add_line((-0.6, -1.25), (0.6, -1.25), dxfattribs=a)))
 # software / data link: -o-
 save("datalink", lambda m, a: m.add_circle((0, 0), 0.75, dxfattribs=a))
+
+# mechanical link: -●- (outline + solid hatch so it stays round at any zoom)
+def mechanical(m, a):
+    m.add_circle((0, 0), 0.75, dxfattribs=a)
+    h = m.add_hatch(color=0, dxfattribs={"layer": "0"})   # solid, BYBLOCK
+    h.paths.add_polyline_path([(0.75, 0, 1), (-0.75, 0, 1)], is_closed=True)
+save("mechanical", mechanical)
+
+def wave(periods, length=3.0, amp=1.0, steps=24):
+    """Sine wave centered on (0,0) along X: `periods` full periods, each `length` long."""
+    half = periods * length / 2
+    n = periods * steps
+    return [(-half + i * 2 * half / n, amp * math.sin(2 * math.pi * i / steps)) for i in range(n + 1)]
+
+# electromagnetic or sonic signal, guided: -∿- (wave over the line)
+save("em_guided", lambda m, a: m.add_lwpolyline(wave(1), dxfattribs=a))
+# electromagnetic or sonic signal, not guided: ∿∿ (delete the base line after placing)
+save("em_unguided", lambda m, a: m.add_lwpolyline(wave(2), dxfattribs=a))
 print("\n".join(sorted(p.name for p in out.glob("pid_*.dxf"))))
