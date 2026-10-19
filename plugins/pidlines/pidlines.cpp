@@ -30,6 +30,10 @@
  *     joins up; its leftover symbols have to be deleted by hand.
  *   - Plugin_Entity::updateData on a polyline resets "closed" unless CLOSEPOLY
  *     is passed, so applyPen always passes it.
+ *   - Pieces keep the source's entity type (a polyline stays polylines, even a
+ *     one-segment piece): LibreCAD draws a LINE lighter than a polyline segment
+ *     with the same pen (measured 2026-10-19: peak 130 vs 192 on screen), so a
+ *     LINE/polyline mix showed darker corners on one line.
  */
 
 #include <cmath>
@@ -82,6 +86,7 @@ struct Pen {
 struct Ent {                // a line, arc or polyline of the drawing
     Plug_Entity *e = nullptr;
     qulonglong id = 0;
+    int type = 0;           // DPI::LINE / ARC / POLYLINE
     Path path;
     QString layer;
     Pen pen;
@@ -165,15 +170,16 @@ bool toPath(Plug_Entity *e, const QHash<int, QVariant> &d, Path *path) {
 
 double rad2deg(double a) { return a * 180.0 / kPi; }
 
-// Adds `segs` as one entity on the current layer: LINE, ARC or POLYLINE.
+// Adds `segs` as one entity on the current layer: a POLYLINE when asked for
+// (keeps the source type) or when it takes more than one segment, else LINE/ARC.
 // Returns true for a polyline (applyPen needs to know).
-bool addSegs(Document_Interface *doc, QList<Seg> segs, bool closed) {
+bool addSegs(Document_Interface *doc, QList<Seg> segs, bool closed, bool polyline) {
     if (closed && segs.size() == 1) {
         // a loop merged into one 360° arc: a polyline needs two vertices (bulge of 360° is infinite)
         const Seg s = segs.takeFirst();
         segs << subSeg(s, 0, s.len / 2) << subSeg(s, s.len / 2, s.len);
     }
-    if (segs.size() == 1 && !closed) {
+    if (segs.size() == 1 && !closed && !polyline) {
         const Seg &s = segs.first();
         if (!s.arc) {
             QPointF a = s.a, b = s.b;
@@ -293,6 +299,7 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         if (!toPath(e, d, &en.path)) continue;
         en.e = e;
         en.id = d.value(DPI::EID).toULongLong();
+        en.type = d.value(DPI::ETYPE).toInt();
         en.layer = d.value(DPI::LAYER).toString();
         en.pen.color = d.value(DPI::COLOR).toInt();
         en.pen.ltype = d.value(DPI::LTYPE).toString();
@@ -349,6 +356,9 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         }
 
         const bool hadGaps = !ch.gapSymbols.isEmpty();
+        // a polyline anywhere in the chain means the line started as a polyline
+        bool asPoly = false;
+        for (int m: ch.members) asPoly = asPoly || ents.at(m).type == DPI::POLYLINE;
         auto removeLine = [&]() { for (int m: ch.members) doc->removeEntity(ents.at(m).e); };
         QList<int> added;   // applyPen bookkeeping, in adding order
         doc->setLayer(src.layer);
@@ -356,7 +366,7 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         if (pat < 0) {      // remove symbols only: a cut line is joined back
             if (hadGaps) {
                 removeLine();
-                added << (addSegs(doc, ch.merged.segs, ch.merged.closed) ? int(ch.merged.closed) : -1);
+                added << (addSegs(doc, ch.merged.segs, ch.merged.closed, asPoly) ? int(ch.merged.closed) : -1);
             }
             applyPen(doc, src.pen, added);
             continue;
@@ -375,10 +385,10 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         } else if (anyCut) {
             removeLine();
             for (const QList<Seg> &piece: pieces(ch.merged, st, gap))
-                added << (addSegs(doc, piece, false) ? 0 : -1);
+                added << (addSegs(doc, piece, false, asPoly) ? 0 : -1);
         } else if (hadGaps) {
             removeLine();
-            added << (addSegs(doc, ch.merged.segs, ch.merged.closed) ? int(ch.merged.closed) : -1);
+            added << (addSegs(doc, ch.merged.segs, ch.merged.closed, asPoly) ? int(ch.merged.closed) : -1);
         }   // else the line stays as it is
         for (const Station &s: st) {
             QPointF p; double ang;
