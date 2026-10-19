@@ -94,6 +94,8 @@ void QC_ActionGetSelect::keyPressEvent(QKeyEvent* e)
 {
     if (e->key()==Qt::Key_Escape || e->key()==Qt::Key_Enter)
     {
+        if (e->key()==Qt::Key_Escape && cancelFlag)
+            *cancelFlag = true;
 		RS_DIALOGFACTORY->updateMouseWidget();
         finish();
         completed = true;

@@ -1076,7 +1076,8 @@ Plug_Entity *Doc_plugin_interface::newEntity( enum DPI::ETYPE type){
 /*TODO RLZ: add undo support in this method*/
 void Doc_plugin_interface::removeEntity(Plug_Entity *ent){
     RS_Entity *e = (reinterpret_cast<Plugin_Entity*>(ent))->getEnt();
-    if (doc && e) {
+    // changeUndoState() toggles: removing an already deleted entity would bring it back
+    if (doc && e && !e->isUndone()) {
         LC_UndoSection undo(doc);
         e->setSelected(false);
         e->changeUndoState();
@@ -1182,83 +1183,88 @@ void Doc_plugin_interface::setCurrentLayerProperties(int c, QString const& w,
     }
 }
 
+// The wait loops below: the event handler owns the action through a shared_ptr
+// and drops it when it finishes, and Esc (QC_ApplicationWindow::slotKillAllActions)
+// clears the whole stack, so `a` can dangle after processEvents(). Dereference it
+// only while isValid() still finds it -- the old code read it afterwards, which
+// crashed on Esc and made getSelect() report "cancelled" after every selection.
+namespace {
+void collectSelected(RS_EntityContainer* doc, Doc_plugin_interface* d,
+                     QList<Plug_Entity *> *sel, RS2::EntityType type)
+{
+    for (auto e: *doc) {
+        if (e->isSelected() && !e->isUndone()
+                && (type == RS2::EntityUnknown || e->rtti() == type))
+            sel->append(reinterpret_cast<Plug_Entity*>(new Plugin_Entity(e, d)));
+    }
+}
+}
+
 bool Doc_plugin_interface::getPoint(QPointF *point, const QString& message,
 									QPointF *base){
     bool status = false;
-    QC_ActionGetPoint* a = new QC_ActionGetPoint(*doc, *gView);
-    if (a) {
-        if (!(message.isEmpty()) ) a->setMessage(message);
-        gView->killAllActions();
-        gView->setCurrentAction(a);
-        if (base) a->setBasepoint(base);
-        QEventLoop ev;
-        while (!a->isCompleted()) {
-            ev.processEvents ();
-            if (!gView->getEventHandler()->hasAction())
-                break;
-        }
-        if (a->isCompleted() && !a->wasCanceled())
-        {
-            a->getPoint(point);
-            status = true;
-        }
-        //RLZ: delete QC_ActionGetPoint. Investigate how to kill only this action
-        gView->killAllActions();
-    }
-    return status;
-}
-
-Plug_Entity *Doc_plugin_interface::getEnt(const QString& message){
-    QC_ActionGetEnt* a = new QC_ActionGetEnt(*doc, *gView);
-    if (a) {
-        if (!(message.isEmpty()) )
-            a->setMessage(message);
-        gView->killAllActions();
-        gView->setCurrentAction(a);
-        QEventLoop ev;
-        while (!a->isCompleted())
-        {
-            ev.processEvents ();
-            if (!gView->getEventHandler()->hasAction())
-                break;
-        }
-    }
-    Plug_Entity *e = reinterpret_cast<Plug_Entity*>(a->getSelected(this));
-    a->finish();
-    gView->killAllActions();
-    return e;
-}
-
-bool Doc_plugin_interface::getSelect(QList<Plug_Entity *> *sel, const QString& message){
-    bool status = false;
-    QC_ActionGetSelect* a = new QC_ActionGetSelect(*doc, *gView);
-    if (a) {
-        if (!(message.isEmpty()) )
-            a->setMessage(message);
-        gView->killAllActions();
-        gView->setCurrentAction(a);
-        QEventLoop ev;
-        while (!a->isCompleted())
-        {
-            ev.processEvents ();
-            if (!gView->getEventHandler()->hasAction())
-                break;
-        }
-        // qDebug() << "getSelect: passed event loop";
-    }
-//    check if a are cancelled by the user issue #349
     RS_EventHandler* eh = gView->getEventHandler();
-    if (eh && eh->isValid(a) ) {
-        a->getSelected(sel, this);
+    QC_ActionGetPoint* a = new QC_ActionGetPoint(*doc, *gView);
+    if (!(message.isEmpty()) ) a->setMessage(message);
+    gView->killAllActions();
+    gView->setCurrentAction(a);
+    if (base && eh->isValid(a)) a->setBasepoint(base);
+    QEventLoop ev;
+    while (eh->isValid(a) && !a->isCompleted())
+        ev.processEvents(QEventLoop::WaitForMoreEvents);
+    if (eh->isValid(a) && a->isCompleted() && !a->wasCanceled())
+    {
+        a->getPoint(point);
         status = true;
     }
     gView->killAllActions();
     return status;
+}
 
+Plug_Entity *Doc_plugin_interface::getEnt(const QString& message){
+    RS_EventHandler* eh = gView->getEventHandler();
+    QC_ActionGetEnt* a = new QC_ActionGetEnt(*doc, *gView);
+    if (!(message.isEmpty()) )
+        a->setMessage(message);
+    gView->killAllActions();
+    gView->setCurrentAction(a);
+    QEventLoop ev;
+    while (eh->isValid(a) && !a->isCompleted())
+        ev.processEvents(QEventLoop::WaitForMoreEvents);
+    Plug_Entity *e = nullptr;
+    if (eh->isValid(a)) {
+        e = reinterpret_cast<Plug_Entity*>(a->getSelected(this));
+        a->finish();
+    }
+    gView->killAllActions();
+    return e;
+}
+
+// The selection lives in the document, not in the action, so read it from there
+// once the action is done. Esc takes one of two routes: with the canvas focused it
+// reaches the action, which sets `canceled` (the selection stays); otherwise
+// QC_ApplicationWindow kills all actions and clears the selection.
+bool Doc_plugin_interface::getSelect(QList<Plug_Entity *> *sel, const QString& message){
+    RS_EventHandler* eh = gView->getEventHandler();
+    QC_ActionGetSelect* a = new QC_ActionGetSelect(*doc, *gView);
+    auto canceled = std::make_shared<bool>(false);
+    a->setCancelFlag(canceled);
+    if (!(message.isEmpty()) )
+        a->setMessage(message);
+    gView->killAllActions();
+    gView->setCurrentAction(a);
+    QEventLoop ev;
+    while (eh->isValid(a) && !a->isCompleted())
+        ev.processEvents(QEventLoop::WaitForMoreEvents);
+    gView->killAllActions();
+    if (*canceled)
+        return false;
+    int before = sel->size();
+    collectSelected(doc, this, sel, RS2::EntityUnknown);
+    return sel->size() > before;
 }
 
 bool Doc_plugin_interface::getSelectByType(QList<Plug_Entity *> *sel, enum DPI::ETYPE type, const QString& message){
-    bool status = false;
     RS2::EntityType typeToSelect = RS2::EntityType::EntityUnknown;
     if(type==DPI::LINE){
         typeToSelect = RS2::EntityType::EntityLine;
@@ -1269,42 +1275,36 @@ bool Doc_plugin_interface::getSelectByType(QList<Plug_Entity *> *sel, enum DPI::
     } else {
         //Unhandled case
     }
-    
+
+    RS_EventHandler* eh = gView->getEventHandler();
     gView->setTypeToSelect(typeToSelect);
     QC_ActionGetSelect* a = new QC_ActionGetSelect(typeToSelect, *doc, *gView);
-
-
-    if (a) {
-        if (!(message.isEmpty()) )
-            a->setMessage(message);
-        gView->killAllActions();
-        gView->setCurrentAction(a);
-        QEventLoop ev;
-        while (!a->isCompleted())
-        {
-            ev.processEvents ();
-            if (!gView->getEventHandler()->hasAction()){
-                break;
-            }
-
-        }
-    }
-    //check if a are cancelled by the user issue #349
-    RS_EventHandler* eh = gView->getEventHandler();
-    if (eh && eh->isValid(a) ) {
-        a->getSelected(sel, this);
-        status = true;
-    }
+    auto canceled = std::make_shared<bool>(false);
+    a->setCancelFlag(canceled);
+    if (!(message.isEmpty()) )
+        a->setMessage(message);
+    gView->killAllActions();
+    gView->setCurrentAction(a);
+    QEventLoop ev;
+    while (eh->isValid(a) && !a->isCompleted())
+        ev.processEvents(QEventLoop::WaitForMoreEvents);
     gView->killAllActions();
     gView->setTypeToSelect(RS2::EntityType::EntityUnknown);
-    return status;
+    if (*canceled)
+        return false;
+    int before = sel->size();
+    collectSelected(doc, this, sel, typeToSelect);
+    return sel->size() > before;
 }
 
 bool Doc_plugin_interface::getAllEntities(QList<Plug_Entity *> *sel, bool visible){
     bool status = false;
 
 	for(auto e: *doc){
-
+        // deleted entities stay in the container (flagged undone) for undo; they are
+        // not part of the drawing, and handing them out let plugins revive them
+        if (e->isUndone())
+            continue;
         if (e->isVisible() || !visible) {
             Plugin_Entity *pe = new Plugin_Entity(e, this);
             sel->append(reinterpret_cast<Plug_Entity*>(pe));

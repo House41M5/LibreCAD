@@ -73,7 +73,12 @@ public:
 
     void unselectEntities();
 
+    //! Set to true on Esc. Shared because the event handler usually releases
+    //! this action before the plugin's wait loop gets to look at it.
+    void setCancelFlag(std::shared_ptr<bool> flag) { cancelFlag = std::move(flag); }
+
 private:
+    std::shared_ptr<bool> cancelFlag;
     bool completed = false;
     std::unique_ptr<QString> message;
     RS2::EntityType typeToSelect = RS2::EntityType::EntityUnknown;
