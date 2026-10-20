@@ -1,0 +1,207 @@
+<title>คู่มือ PID signal line</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Sarabun:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* layout: one A4 drawing sheet, frame + CAD-style title block, two columns inside */
+:root {
+  --desk: #dfe3e8;      /* screen only, around the sheet */
+  --paper: #ffffff;
+  --ink: #1b1f24;
+  --mute: #5a6472;
+  --rule: #c5ccd6;
+  --tint: #eef2f8;
+  --acc: #1d4f91;       /* signal blue: headings, step numbers */
+  --display: "Chakra Petch", "Leelawadee UI", Tahoma, sans-serif;
+  --body: "Sarabun", "Leelawadee UI", Tahoma, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--ink); font-family: var(--body);
+  padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sheet { width: 210mm; min-height: 297mm; margin: 0 auto; background: var(--paper); padding: 7mm;
+  box-shadow: 0 2px 14px rgba(20, 30, 50, .18); font-size: 8.2pt; line-height: 1.38; }
+.frame { border: 0.5mm solid var(--ink); min-height: calc(297mm - 14mm); padding: 4mm 5mm 0; display: flex; flex-direction: column; gap: 3.2mm; }
+
+header { display: grid; grid-template-columns: 1fr auto; gap: 4mm; align-items: end; border-bottom: 0.3mm solid var(--ink); padding-bottom: 2.6mm; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 21pt; line-height: 1.05; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 small { font-size: 10.5pt; color: var(--acc); font-weight: 600; letter-spacing: .06em; display: block; margin-bottom: 1mm; }
+header p { margin: 1.4mm 0 0; color: var(--mute); max-width: 120mm; }
+.meta { text-align: right; font-size: 7.6pt; color: var(--mute); line-height: 1.5; }
+.meta b { color: var(--ink); }
+
+h2 { font-family: var(--display); font-weight: 600; font-size: 10.5pt; color: var(--acc); margin: 0 0 1.6mm; display: flex; gap: 2mm; align-items: baseline; }
+h2 .no { font-size: 8pt; border: 0.25mm solid var(--acc); border-radius: 50%; width: 4.6mm; height: 4.6mm; display: inline-grid; place-items: center; line-height: 1; }
+.cols { display: grid; grid-template-columns: 92mm 1fr; gap: 5mm; }
+.cols > * { min-width: 0; }
+
+table { border-collapse: collapse; width: 100%; }
+th { font-weight: 600; font-size: 7.2pt; color: var(--mute); text-align: left; letter-spacing: .03em; border-bottom: 0.25mm solid var(--ink); padding: 0 1mm 0.8mm; }
+td { border-bottom: 0.15mm solid var(--rule); padding: 0.45mm 1mm; vertical-align: middle; line-height: 1.25; }
+td:first-child { padding-left: 0; width: 27mm; }
+td .en { display: block; font-size: 7pt; color: var(--mute); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mono { font-family: var(--mono); font-size: 7pt; }
+tr.aside td { color: var(--mute); border-bottom: 0; }
+.smp { display: block; height: auto; max-width: 100%; }
+.smp path, .diag path { fill: none; stroke: var(--ink); stroke-width: 0.2; stroke-linecap: round; stroke-linejoin: round; }
+.smp path.f, .diag path.f { fill: var(--ink); stroke: none; }
+.smp path.dash { stroke-dasharray: 2.4 1.2; stroke-linecap: butt; }
+.note { font-size: 7.2pt; color: var(--mute); margin: 1mm 0 0; }
+
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.5mm; counter-reset: s; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 5.2mm 1fr; gap: 1.6mm; }
+ol.steps > li::before { content: counter(s); font-family: var(--display); font-weight: 700; color: var(--paper); background: var(--acc); width: 4.6mm; height: 4.6mm; border-radius: 1mm; display: grid; place-items: center; font-size: 8pt; margin-top: .3mm; }
+.k { font-family: var(--mono); font-size: 7.2pt; border: 0.2mm solid var(--mute); border-bottom-width: 0.45mm; border-radius: 0.8mm; padding: 0 1mm; white-space: nowrap; }
+.mi { font-weight: 600; white-space: nowrap; }
+
+.dlg { border: 0.25mm solid var(--mute); border-radius: 1mm; margin: 1.4mm 0 0.6mm; font-size: 7.6pt; overflow: hidden; }
+.dlg .bar { background: var(--tint); padding: 0.6mm 2mm; font-weight: 600; border-bottom: 0.2mm solid var(--rule); }
+.dlg .row { display: grid; grid-template-columns: 4.2mm 22mm 1fr; align-items: center; gap: 1mm; padding: 0.7mm 2mm; }
+.dlg .fld { border: 0.2mm solid var(--rule); border-radius: 0.6mm; padding: 0.1mm 1.2mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dlg .btns { display: flex; justify-content: flex-end; gap: 1.5mm; padding: 0.8mm 2mm 1.2mm; }
+.dlg .btns span { border: 0.2mm solid var(--mute); border-radius: 0.6mm; padding: 0 3mm; }
+.tag { font-family: var(--display); font-weight: 700; color: var(--acc); font-size: 7.6pt; }
+dl.fields { margin: 1mm 0 0; display: grid; grid-template-columns: 4.2mm 1fr; gap: 0.6mm 1mm; }
+dl.fields dt { margin: 0; }
+dl.fields dd { margin: 0; }
+
+.diag { width: 78mm; max-width: 100%; height: auto; display: block; margin: 1.2mm auto 0; }
+.diag text { font-family: var(--body); font-size: 1.15px; fill: var(--ink); text-anchor: middle; }
+.diag .dim path { stroke: var(--mute); stroke-width: 0.12; }
+.diag .dim path.f { fill: var(--mute); }
+.diag .acc path { stroke: var(--acc); }
+.diag text.acc { fill: var(--acc); }
+.diag .lite text { fill: var(--mute); }
+
+ul.tips { margin: 0; padding-left: 3.6mm; display: grid; gap: 0.7mm; }
+ul.tips li::marker { color: var(--acc); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.two > * { min-width: 0; }
+pre { font-family: var(--mono); font-size: 6.9pt; line-height: 1.35; background: var(--tint); border-left: 0.6mm solid var(--acc); margin: 1.2mm 0 0; padding: 1mm 2mm; white-space: pre-wrap; overflow-wrap: anywhere; }
+ol.add { margin: 0; padding-left: 4mm; display: grid; gap: 0.7mm; }
+
+.tb { margin-top: auto; border-top: 0.5mm solid var(--ink); margin-inline: -5mm; display: grid; grid-template-columns: 1.9fr 1fr 0.7fr; font-size: 7pt; }
+.tb > div { padding: 1.2mm 2.4mm 1.4mm; border-left: 0.25mm solid var(--ink); min-width: 0; }
+.tb > div:first-child { border-left: 0; }
+.tb .cap { display: block; font-size: 6.2pt; color: var(--mute); letter-spacing: .04em; }
+.tb .path { font-family: var(--mono); font-size: 6.6pt; overflow-wrap: anywhere; }
+.tb .big { font-family: var(--display); font-weight: 700; font-size: 10pt; }
+
+@media screen and (max-width: 860px) {
+  .sheet { width: auto; min-height: 0; padding: 4mm; }
+  .frame { min-height: 0; }
+  .cols, .two, header, .tb { grid-template-columns: 1fr; }
+  .tb > div { border-left: 0; border-top: 0.25mm solid var(--ink); }
+  .meta { text-align: left; }
+}
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: var(--paper); padding: 0; }
+  .sheet { box-shadow: none; margin: 0; height: 297mm; }
+}
+</style>
+
+<div class="sheet"><div class="frame">
+
+<header>
+  <div>
+    <h1><small>คู่มือปลั๊กอิน LibreCAD</small>PID signal line</h1>
+    <p>วางสัญลักษณ์เส้นสัญญาณ P&amp;ID (ISA-5.1) ลงบนเส้น ลายที่ต้องเว้นช่อง (o ◉ ตัวอักษร) ตัดเส้นใต้สัญลักษณ์ให้ ผลเป็นเส้นกับบล็อก DXF ธรรมดา เปิดในโปรแกรม CAD ไหนก็เหมือนกัน</p>
+  </div>
+  <div class="meta"><b>LibreCAD 2.2.1.6 รุ่นแพตช์ (Kai)</b><br>ปลั๊กอิน pidlines · 12 ลาย<br>ฉบับ 20 ต.ค. 2569</div>
+</header>
+
+<div class="cols">
+  <section>
+    <h2><span class="no">1</span>ลายในรายการ</h2>
+    <table>
+      <thead><tr><th>ตัวอย่าง</th><th>ความหมาย · ไฟล์ลาย</th><th class="num">ช่องตัด mm</th></tr></thead>
+      <tbody>
+{{ROWS}}
+      </tbody>
+    </table>
+    <p class="note">ภาพตัวอย่าง: เส้นยาว 24 สเกล 1 ระยะห่าง 8 (ลายตัวอักษรใช้ระยะห่างตั้งต้น 40 จึงได้ตัวเดียวกลางเส้น) · ช่องตัดเป็นค่าที่สเกล 1 จาก pidlines.ini</p>
+  </section>
+
+  <section>
+    <h2><span class="no">2</span>วิธีใช้</h2>
+    <ol class="steps">
+      <li><div>หลายเส้น: <b>ลากกรอบเลือกเส้นไว้ก่อน</b> เพราะตอนปลั๊กอินรอให้เลือก ลากกรอบไม่ได้ คลิกได้ทีละเส้น</div></li>
+      <li><div>เมนู <span class="mi">Plugins → PID signal line</span></div></li>
+      <li><div>ตั้งค่าในหน้าต่าง แล้วกด <span class="k">OK</span>
+        <div class="dlg">
+          <div class="bar">เส้นสัญญาณ P&amp;ID</div>
+          <div class="row"><span class="tag">ก</span><span>ลาย:</span><span class="fld">ลิงก์ข้อมูล ภายในระบบ (data link) —o— ▾</span></div>
+          <div class="row"><span class="tag">ข</span><span>ระยะห่าง:</span><span class="fld">40.00</span></div>
+          <div class="row"><span class="tag">ค</span><span>สเกลสัญลักษณ์:</span><span class="fld">1.50</span></div>
+          <div class="btns"><span>OK</span><span>Cancel</span></div>
+        </div>
+        <dl class="fields">
+          <dt class="tag">ก</dt><dd>ลายจากตารางข้อ 1 · รายการสุดท้าย “(ลบสัญลักษณ์อย่างเดียว · ต่อเส้นกลับ)”</dd>
+          <dt class="tag">ข</dt><dd>กลางสัญลักษณ์ถึงกลางสัญลักษณ์ ตามแนวเส้น หน่วยเดียวกับแบบ · จำค่าแยกตามลาย</dd>
+          <dt class="tag">ค</dt><dd>1 = ขนาดตามไฟล์ลาย (สูงราว 3 mm) · ช่องตัดขยายตามสเกล</dd>
+          <dt class="tag">·</dt><dd>ตัดเส้นใต้สัญลักษณ์หรือไม่ ขึ้นกับลาย (คอลัมน์ช่องตัดในข้อ 1) ไม่มีให้เลือกในหน้าต่าง</dd>
+        </dl>
+      </div></li>
+      <li><div>คลิกเส้นบนแบบ (เส้นที่ตัดแล้ว คลิกท่อนเดียวพอ) แล้วกด <span class="k">Enter</span> · ถ้าเลือกไว้แล้วตามข้อ 1 กด <span class="k">Enter</span> ได้เลย · <span class="k">Esc</span> = ยกเลิก ไม่วางอะไร</div></li>
+    </ol>
+    {{DIAGRAM}}
+    <p class="note">สัญลักษณ์เรียงกึ่งกลางเส้น ปลายสองข้างเหลือเท่ากัน · จำนวน = ความยาว ÷ ระยะห่าง ปัดลง (อย่างน้อย 1 ตัว) · เดินตามโค้ง fillet และมุมของ polyline</p>
+  </section>
+</div>
+
+<div class="two">
+  <section>
+    <h2><span class="no">3</span>เปลี่ยน · ลบ · ย้อน</h2>
+    <ul class="tips">
+      <li><b>เปลี่ยนลายหรือระยะห่าง:</b> รันซ้ำ แล้วคลิกท่อนใดก็ได้ของเส้นเดิม ลายเดิมถูกลบ เส้นต่อกลับเป็นเส้นเดียวก่อน แล้วจึงวางลายใหม่</li>
+      <li><b>เอาลายออก:</b> เลือก “(ลบสัญลักษณ์อย่างเดียว · ต่อเส้นกลับ)”</li>
+      <li><b>วางผิด:</b> <span class="k">Ctrl+Z</span> ย้อนการวางทั้งรอบ</li>
+    </ul>
+    <h2 style="margin-top:2.4mm"><span class="no">4</span>ข้อควรรู้</h2>
+    <ul class="tips">
+      <li>ใช้กับ line · arc · polyline เท่านั้น วัตถุอื่นในที่เลือกถูกข้าม</li>
+      <li>ท่อนเส้นกับสัญลักษณ์อยู่ layer ของเส้นเดิม สี ชนิดเส้น ความหนาตามเส้นเดิม</li>
+      <li>ลายลม // เอียงทางเดียวกันทุกแนวเส้น · L บนเส้นแนวตั้งตั้งตรงเหมือนแนวนอน · ตัวอักษร CWS … ไม่กลับหัว อ่านจากซ้ายไปขวาเสมอ</li>
+      <li>ใกล้มุม ปลายเส้น หรือระยะห่างแคบกว่าช่อง: สัญลักษณ์วางทับเส้นโดยไม่ตัด และมีกล่องแจ้งจำนวน</li>
+      <li>ลาย “ไม่มีตัวนำ” ลบเส้นฐานทิ้ง เหลือแต่คลื่น</li>
+      <li>หลังตัดแล้ว อย่าย้ายหรือ trim ท่อนเส้นเอง ไม่งั้นต่อกลับไม่ได้ ต้องลบสัญลักษณ์ที่ค้างเอง</li>
+      <li>แก้ไฟล์ลาย .dxf ทีหลัง แบบที่มีบล็อก pid_… อยู่แล้วยังใช้บล็อกเดิม: ลบสัญลักษณ์ด้วยปลั๊กอินก่อน แล้วลบบล็อกใน Block List</li>
+      <li>layer ที่ปิดการพิมพ์ไว้ เส้นจะไม่ออกตอนพิมพ์</li>
+      <li>ต้องใช้ LibreCAD รุ่นแพตช์ รุ่นปกติ 2.2.1.x เลือกเส้นแล้วไม่เกิดอะไร</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="no">5</span>เพิ่มลายเอง</h2>
+    <ol class="add">
+      <li>วาดสัญลักษณ์รอบจุด (0,0) ให้เส้นวิ่งตามแกน X · layer 0 · สี ByBlock · หน่วย mm ที่สเกล 1</li>
+      <li>เซฟเป็น <span class="mono">pid_&lt;ชื่อ&gt;.dxf</span> ใน <span class="mono">Documents\LibreCAD\pidlines</span></li>
+      <li>เพิ่มหัวข้อ <span class="mono">[&lt;ชื่อ&gt;]</span> ใน <span class="mono">pidlines.ini</span> โฟลเดอร์เดียวกัน เช่น
+<pre>[cws]
+label="น้ำหล่อเย็น จ่าย (cooling water supply)  —CWS—"
+gap=7.75      ; ช่องตัด mm ที่สเกล 1 (0 = ไม่ตัด)
+spacing=40    ; ระยะห่างตั้งต้นในหน้าต่าง
+; line=0      ; ลายที่ไม่มีเส้น (ลบเส้นฐาน)
+; mirror_steep=1 ; เส้นชันเกิน 45° วางแบบสะท้อน (//, L)
+; upright_vertical=1 ; เส้นแนวตั้ง ไม่หมุนสัญลักษณ์ (L)</pre></li>
+      <li>รหัสตัวอักษรใหม่ (เช่น CHWS) สร้างได้ทั้งไฟล์ลายและหัวข้อ ini ด้วยสคริปต์ในซอร์สปลั๊กอิน (ต้องมี Python + ezdxf):
+<pre>python make_text_patterns.py "%USERPROFILE%\Documents\LibreCAD\pidlines" "CHWS=น้ำเย็น จ่าย"</pre></li>
+    </ol>
+    <p class="note">ไม่ต้องปิดเปิด LibreCAD ปลั๊กอินอ่านลายใหม่ทุกครั้งที่เปิดหน้าต่าง</p>
+  </section>
+</div>
+
+<div class="tb">
+  <div><span class="cap">ไฟล์อยู่ที่</span>
+    <span class="path">Documents\LibreCAD\plugins\pidlines0.dll</span> ตัวปลั๊กอิน<br>
+    <span class="path">Documents\LibreCAD\pidlines\</span> ลายเพิ่ม + pidlines.ini (ชื่อซ้ำ ใช้ของที่นี่)<br>
+    <span class="path">C:\Program Files\LibreCAD\resources\pidlines\</span> ลายพื้นฐาน 4 ลาย<br>
+    <span class="path">%APPDATA%\LibreCAD\pidlines.ini</span> ค่าที่หน้าต่างจำไว้</div>
+  <div><span class="cap">ซอร์ส</span><span class="path">github.com/House41M5/LibreCAD</span><br>สาขา <span class="path">kai/thai-fonts-2216</span><br><span class="path">plugins/pidlines/</span></div>
+  <div><span class="cap">เอกสาร</span><span class="big">แผ่น 1/1</span><br>A4 · พิมพ์สเกล 100%</div>
+</div>
+
+</div></div>
