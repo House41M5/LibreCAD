@@ -1,0 +1,642 @@
+[
+ {
+  "cat": "valves",
+  "name": "vlv_generic",
+  "th": "วาล์ว 2 ทาง (ทั่วไป)",
+  "en": "Valve, general (2-way)",
+  "note": "ใช้เมื่อยังไม่ระบุชนิด หรือเป็นตัววาล์วของวาล์วควบคุม",
+  "file": "1 Valves/vlv_generic.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_gate",
+  "th": "วาล์วประตูน้ำ",
+  "en": "Gate valve",
+  "note": "บางโครงการวาดเป็นรูปโบว์เปล่า ดูตาราง legend ของโครงการ",
+  "file": "1 Valves/vlv_gate.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_globe",
+  "th": "วาล์วลูกโลก",
+  "en": "Globe valve",
+  "note": "หรี่/ปรับอัตราการไหลได้",
+  "file": "1 Valves/vlv_globe.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_ball",
+  "th": "บอลวาล์ว",
+  "en": "Ball valve",
+  "note": "เปิด-ปิดเร็ว 1/4 รอบ",
+  "file": "1 Valves/vlv_ball.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_butterfly",
+  "th": "วาล์วปีกผีเสื้อ",
+  "en": "Butterfly valve",
+  "note": "ท่อขนาดใหญ่ ลดความยาววาล์ว",
+  "file": "1 Valves/vlv_butterfly.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_plug",
+  "th": "วาล์วปลั๊ก",
+  "en": "Plug valve",
+  "note": "",
+  "file": "1 Valves/vlv_plug.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_needle",
+  "th": "วาล์วเข็ม",
+  "en": "Needle valve",
+  "note": "ปรับละเอียด ท่อเล็ก/สายเครื่องวัด",
+  "file": "1 Valves/vlv_needle.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_diaphragm",
+  "th": "วาล์วไดอะแฟรม",
+  "en": "Diaphragm valve",
+  "note": "",
+  "file": "1 Valves/vlv_diaphragm.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_pinch",
+  "th": "วาล์วบีบ",
+  "en": "Pinch valve",
+  "note": "",
+  "file": "1 Valves/vlv_pinch.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_check",
+  "th": "เช็ควาล์ว (กันไหลกลับ)",
+  "en": "Check valve",
+  "note": "ไหลได้ทางเดียวตามลูกศร (ซ้ายไปขวา) กลับทิศให้ใช้ Mirror",
+  "file": "1 Valves/vlv_check.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_angle",
+  "th": "วาล์วมุม",
+  "en": "Angle valve",
+  "note": "ทางเข้าด้านล่าง ทางออกด้านขวา",
+  "file": "1 Valves/vlv_angle.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_3way",
+  "th": "วาล์ว 3 ทาง",
+  "en": "Three-way valve",
+  "note": "",
+  "file": "1 Valves/vlv_3way.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_4way",
+  "th": "วาล์ว 4 ทาง",
+  "en": "Four-way valve",
+  "note": "",
+  "file": "1 Valves/vlv_4way.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_relief",
+  "th": "วาล์วนิรภัย / ระบายความดัน",
+  "en": "Pressure relief / safety valve (PSV)",
+  "note": "ทางเข้าด้านล่าง ทางออกด้านขวา สปริงอยู่บน",
+  "file": "1 Valves/vlv_relief.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_regulator",
+  "th": "วาล์วลดความดัน (เรกูเลเตอร์)",
+  "en": "Pressure regulator, self-actuated",
+  "note": "ท่อรับความดันต่อด้านปลายน้ำ (ขวา)",
+  "file": "1 Valves/vlv_regulator.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_control",
+  "th": "วาล์วควบคุม (หัวขับลม)",
+  "en": "Control valve, pneumatic diaphragm",
+  "note": "= วาล์ว 2 ทาง + หัวขับไดอะแฟรม",
+  "file": "1 Valves/vlv_control.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_solenoid",
+  "th": "โซลินอยด์วาล์ว",
+  "en": "Solenoid valve",
+  "note": "",
+  "file": "1 Valves/vlv_solenoid.dxf"
+ },
+ {
+  "cat": "valves",
+  "name": "vlv_motor",
+  "th": "วาล์วมอเตอร์ (MOV)",
+  "en": "Motor-operated valve",
+  "note": "",
+  "file": "1 Valves/vlv_motor.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_manual",
+  "th": "มือหมุน / ก้านโยก",
+  "en": "Manual (handwheel)",
+  "note": "",
+  "file": "2 Actuators/act_manual.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_diaphragm",
+  "th": "หัวขับลม แบบไดอะแฟรม",
+  "en": "Pneumatic, diaphragm",
+  "note": "",
+  "file": "2 Actuators/act_diaphragm.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_piston",
+  "th": "หัวขับลม แบบลูกสูบ",
+  "en": "Pneumatic, piston",
+  "note": "",
+  "file": "2 Actuators/act_piston.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_motor",
+  "th": "มอเตอร์ไฟฟ้า",
+  "en": "Electric motor",
+  "note": "",
+  "file": "2 Actuators/act_motor.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_hydraulic",
+  "th": "หัวขับไฮดรอลิก",
+  "en": "Hydraulic",
+  "note": "",
+  "file": "2 Actuators/act_hydraulic.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_solenoid",
+  "th": "โซลินอยด์",
+  "en": "Solenoid",
+  "note": "",
+  "file": "2 Actuators/act_solenoid.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_fail_closed",
+  "th": "ลูกศร: ไฟ/ลมดับแล้วปิด (FC)",
+  "en": "Fail closed arrow",
+  "note": "วางที่จุดเดียวกับวาล์ว ลูกศรชี้ลงหาวาล์ว",
+  "file": "2 Actuators/act_fail_closed.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_fail_open",
+  "th": "ลูกศร: ไฟ/ลมดับแล้วเปิด (FO)",
+  "en": "Fail open arrow",
+  "note": "วางที่จุดเดียวกับวาล์ว ลูกศรชี้ขึ้น",
+  "file": "2 Actuators/act_fail_open.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_label_fo",
+  "th": "ตัวอักษร FO: ไฟ/ลมดับแล้วเปิด",
+  "en": "Fail position letters FO",
+  "note": "วางที่จุดเดียวกับวาล์ว ตัวอักษรอยู่ใต้วาล์ว",
+  "file": "2 Actuators/act_label_fo.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_label_fc",
+  "th": "ตัวอักษร FC: ไฟ/ลมดับแล้วปิด",
+  "en": "Fail position letters FC",
+  "note": "วางที่จุดเดียวกับวาล์ว ตัวอักษรอยู่ใต้วาล์ว",
+  "file": "2 Actuators/act_label_fc.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_label_fl",
+  "th": "ตัวอักษร FL: ไฟ/ลมดับแล้วค้างตำแหน่งเดิม",
+  "en": "Fail position letters FL",
+  "note": "วางที่จุดเดียวกับวาล์ว ตัวอักษรอยู่ใต้วาล์ว",
+  "file": "2 Actuators/act_label_fl.dxf"
+ },
+ {
+  "cat": "actuators",
+  "name": "act_label_fi",
+  "th": "ตัวอักษร FI: ไฟ/ลมดับแล้วไม่แน่นอน",
+  "en": "Fail position letters FI",
+  "note": "วางที่จุดเดียวกับวาล์ว ตัวอักษรอยู่ใต้วาล์ว",
+  "file": "2 Actuators/act_label_fi.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_flange",
+  "th": "หน้าแปลน (ปลายวาล์ว)",
+  "en": "Flanged end",
+  "note": "วางชิดปลายวาล์วทั้งสองข้าง",
+  "file": "3 Fittings/fit_flange.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_flange_pair",
+  "th": "รอยต่อหน้าแปลน",
+  "en": "Flanged joint",
+  "note": "",
+  "file": "3 Fittings/fit_flange_pair.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_threaded",
+  "th": "ต่อเกลียว",
+  "en": "Threaded (screwed) end",
+  "note": "",
+  "file": "3 Fittings/fit_threaded.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_welded",
+  "th": "ต่อเชื่อม (butt weld)",
+  "en": "Welded end",
+  "note": "",
+  "file": "3 Fittings/fit_welded.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_socketweld",
+  "th": "ต่อเชื่อมแบบสวม (socket weld)",
+  "en": "Socket weld end",
+  "note": "",
+  "file": "3 Fittings/fit_socketweld.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_reducer",
+  "th": "ข้อลด (ศูนย์ตรง)",
+  "en": "Concentric reducer",
+  "note": "ปลายใหญ่ทางซ้าย",
+  "file": "3 Fittings/fit_reducer.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_reducer_ecc",
+  "th": "ข้อลด (เยื้องศูนย์)",
+  "en": "Eccentric reducer",
+  "note": "ด้านล่างเรียบ ปลายใหญ่ทางซ้าย",
+  "file": "3 Fittings/fit_reducer_ecc.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_strainer_y",
+  "th": "ตัวกรองตัว Y (Y-strainer)",
+  "en": "Y-strainer",
+  "note": "ท่อวิ่งผ่านได้ ไม่ต้องตัดท่อ",
+  "file": "3 Fittings/fit_strainer_y.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_flexible",
+  "th": "ท่ออ่อน / ข้อต่ออ่อน",
+  "en": "Flexible hose / joint",
+  "note": "ตัดท่อยาว 6 มม.",
+  "file": "3 Fittings/fit_flexible.dxf"
+ },
+ {
+  "cat": "fittings",
+  "name": "fit_insulation",
+  "th": "ท่อหุ้มฉนวน",
+  "en": "Thermally insulated pipe",
+  "note": "วางบนท่อ ท่อวิ่งผ่าน",
+  "file": "3 Fittings/fit_insulation.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_pump",
+  "th": "ปั๊ม (ทั่วไป)",
+  "en": "Pump, general",
+  "note": "ทางเข้าซ้าย ทางออกขวา",
+  "file": "4 Equipment/eq_pump.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_pump_centrifugal",
+  "th": "ปั๊มหอยโข่ง",
+  "en": "Centrifugal pump",
+  "note": "",
+  "file": "4 Equipment/eq_pump_centrifugal.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_pump_pd",
+  "th": "ปั๊มแทนที่ (positive displacement)",
+  "en": "Positive displacement pump",
+  "note": "",
+  "file": "4 Equipment/eq_pump_pd.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_pump_gear",
+  "th": "ปั๊มเฟือง",
+  "en": "Gear pump",
+  "note": "",
+  "file": "4 Equipment/eq_pump_gear.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_compressor",
+  "th": "คอมเพรสเซอร์",
+  "en": "Compressor",
+  "note": "ทางเข้าซ้าย ทางออกขวา",
+  "file": "4 Equipment/eq_compressor.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_fan",
+  "th": "พัดลม / โบลเวอร์",
+  "en": "Fan / blower",
+  "note": "",
+  "file": "4 Equipment/eq_fan.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_motor",
+  "th": "มอเตอร์",
+  "en": "Motor",
+  "note": "",
+  "file": "4 Equipment/eq_motor.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_vessel_v",
+  "th": "ถังความดัน แนวตั้ง",
+  "en": "Pressure vessel, vertical",
+  "note": "",
+  "file": "4 Equipment/eq_vessel_v.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_vessel_h",
+  "th": "ถังความดัน แนวนอน",
+  "en": "Pressure vessel, horizontal",
+  "note": "",
+  "file": "4 Equipment/eq_vessel_h.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_tank_open",
+  "th": "ถังเปิด",
+  "en": "Open tank",
+  "note": "",
+  "file": "4 Equipment/eq_tank_open.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_tank_cone",
+  "th": "ถังหลังคากรวย",
+  "en": "Tank, cone roof",
+  "note": "",
+  "file": "4 Equipment/eq_tank_cone.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_hx_plate",
+  "th": "เครื่องแลกเปลี่ยนความร้อนแบบแผ่น",
+  "en": "Plate heat exchanger",
+  "note": "",
+  "file": "4 Equipment/eq_hx_plate.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_hx_shell",
+  "th": "เครื่องแลกเปลี่ยนความร้อนแบบเปลือก-ท่อ",
+  "en": "Shell & tube heat exchanger",
+  "note": "",
+  "file": "4 Equipment/eq_hx_shell.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_cooling_tower",
+  "th": "หอผึ่งเย็น (cooling tower)",
+  "en": "Cooling tower, mechanical draft",
+  "note": "",
+  "file": "4 Equipment/eq_cooling_tower.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_filter",
+  "th": "ตัวกรอง (filter)",
+  "en": "Filter",
+  "note": "",
+  "file": "4 Equipment/eq_filter.dxf"
+ },
+ {
+  "cat": "equipment",
+  "name": "eq_box",
+  "th": "เครื่องจักร / ผู้ใช้ (กรอบ)",
+  "en": "Machine / user (box)",
+  "note": "เขียนชื่อและ tag ในกรอบเอง",
+  "file": "4 Equipment/eq_box.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_disc_field",
+  "th": "อุปกรณ์เดี่ยว · ภาคสนาม",
+  "en": "Discrete instrument, field mounted",
+  "note": "",
+  "file": "5 Instruments/ins_disc_field.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_disc_cr",
+  "th": "อุปกรณ์เดี่ยว · ห้องควบคุม เข้าถึงได้",
+  "en": "Discrete instrument, main control room, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_disc_cr.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_disc_crh",
+  "th": "อุปกรณ์เดี่ยว · ห้องควบคุม หลังแผง/เข้าถึงยาก",
+  "en": "Discrete instrument, main control room, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_disc_crh.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_disc_lp",
+  "th": "อุปกรณ์เดี่ยว · แผงย่อยภาคสนาม เข้าถึงได้",
+  "en": "Discrete instrument, local / auxiliary panel, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_disc_lp.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_disc_lph",
+  "th": "อุปกรณ์เดี่ยว · แผงย่อย หลังแผง/เข้าถึงยาก",
+  "en": "Discrete instrument, local / auxiliary panel, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_disc_lph.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_shared_field",
+  "th": "จอแสดงผลร่วม (DCS/HMI) · ภาคสนาม",
+  "en": "Shared display / control, field mounted",
+  "note": "",
+  "file": "5 Instruments/ins_shared_field.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_shared_cr",
+  "th": "จอแสดงผลร่วม (DCS/HMI) · ห้องควบคุม เข้าถึงได้",
+  "en": "Shared display / control, main control room, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_shared_cr.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_shared_crh",
+  "th": "จอแสดงผลร่วม (DCS/HMI) · ห้องควบคุม หลังแผง/เข้าถึงยาก",
+  "en": "Shared display / control, main control room, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_shared_crh.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_shared_lp",
+  "th": "จอแสดงผลร่วม (DCS/HMI) · แผงย่อยภาคสนาม เข้าถึงได้",
+  "en": "Shared display / control, local / auxiliary panel, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_shared_lp.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_shared_lph",
+  "th": "จอแสดงผลร่วม (DCS/HMI) · แผงย่อย หลังแผง/เข้าถึงยาก",
+  "en": "Shared display / control, local / auxiliary panel, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_shared_lph.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_comp_field",
+  "th": "ฟังก์ชันคอมพิวเตอร์ · ภาคสนาม",
+  "en": "Computer function, field mounted",
+  "note": "",
+  "file": "5 Instruments/ins_comp_field.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_comp_cr",
+  "th": "ฟังก์ชันคอมพิวเตอร์ · ห้องควบคุม เข้าถึงได้",
+  "en": "Computer function, main control room, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_comp_cr.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_comp_crh",
+  "th": "ฟังก์ชันคอมพิวเตอร์ · ห้องควบคุม หลังแผง/เข้าถึงยาก",
+  "en": "Computer function, main control room, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_comp_crh.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_comp_lp",
+  "th": "ฟังก์ชันคอมพิวเตอร์ · แผงย่อยภาคสนาม เข้าถึงได้",
+  "en": "Computer function, local / auxiliary panel, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_comp_lp.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_comp_lph",
+  "th": "ฟังก์ชันคอมพิวเตอร์ · แผงย่อย หลังแผง/เข้าถึงยาก",
+  "en": "Computer function, local / auxiliary panel, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_comp_lph.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_plc_field",
+  "th": "PLC · ภาคสนาม",
+  "en": "Programmable logic controller, field mounted",
+  "note": "",
+  "file": "5 Instruments/ins_plc_field.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_plc_cr",
+  "th": "PLC · ห้องควบคุม เข้าถึงได้",
+  "en": "Programmable logic controller, main control room, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_plc_cr.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_plc_crh",
+  "th": "PLC · ห้องควบคุม หลังแผง/เข้าถึงยาก",
+  "en": "Programmable logic controller, main control room, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_plc_crh.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_plc_lp",
+  "th": "PLC · แผงย่อยภาคสนาม เข้าถึงได้",
+  "en": "Programmable logic controller, local / auxiliary panel, accessible",
+  "note": "",
+  "file": "5 Instruments/ins_plc_lp.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_plc_lph",
+  "th": "PLC · แผงย่อย หลังแผง/เข้าถึงยาก",
+  "en": "Programmable logic controller, local / auxiliary panel, not accessible",
+  "note": "",
+  "file": "5 Instruments/ins_plc_lph.dxf"
+ },
+ {
+  "cat": "instruments",
+  "name": "ins_interlock",
+  "th": "ลอจิก / อินเตอร์ล็อก",
+  "en": "Interlock / logic",
+  "note": "เขียน I หรือเลขอินเตอร์ล็อกข้างใน",
+  "file": "5 Instruments/ins_interlock.dxf"
+ },
+ {
+  "cat": "annotation",
+  "name": "ann_flow",
+  "th": "ลูกศรทิศการไหล",
+  "en": "Flow arrow",
+  "note": "ชี้ไปทาง +X หมุนตามท่อ",
+  "file": "6 Annotation/ann_flow.dxf"
+ },
+ {
+  "cat": "annotation",
+  "name": "ann_offpage",
+  "th": "ป้ายต่อแผ่นอื่น",
+  "en": "Off-page connector",
+  "note": "เขียนเลขแบบปลายทางข้างใน · ชี้ไปทางที่ท่อไป",
+  "file": "6 Annotation/ann_offpage.dxf"
+ },
+ {
+  "cat": "annotation",
+  "name": "ann_tie_in",
+  "th": "จุดต่อเข้าระบบเดิม (tie-in)",
+  "en": "Tie-in point",
+  "note": "เขียนเลข tie-in ข้างใน",
+  "file": "6 Annotation/ann_tie_in.dxf"
+ }
+]

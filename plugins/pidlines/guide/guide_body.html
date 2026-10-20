@@ -1,0 +1,546 @@
+<!-- guide_body.html: text of the P&ID guide. One section element with class page = one A4 sheet.
+     data-head = running header, data-toc = table of contents entry. {{...}} = filled by make_guide.py -->
+
+<section class="page cover">
+  <div class="kicker">คู่มือ · PIPING &amp; INSTRUMENTATION DIAGRAM</div>
+  <h1>คู่มือเขียน P&amp;ID<br>ด้วย LibreCAD</h1>
+  <p class="sub">หลักการเขียน P&amp;ID ตาม ISA-5.1 และขั้นตอนเขียนจริงใน LibreCAD รุ่นแพตช์ (Kai)
+    ด้วยไลบรารีสัญลักษณ์ แม่แบบ และปลั๊กอินเส้นสัญญาณที่ทำไว้ให้ชุดนี้</p>
+  <div class="kit">
+    <div><b>คู่มือเล่มนี้</b>หลักการ วิธีทำใน LibreCAD แบบตัวอย่าง และรายการตรวจก่อนส่งแบบ</div>
+    <div><b>ไลบรารีสัญลักษณ์ {{SYMBOL_COUNT}} ตัว</b>วาล์ว actuator อุปกรณ์ท่อ อุปกรณ์หลัก เครื่องวัด ป้าย · เปิดจาก Library Browser</div>
+    <div><b>แม่แบบ A3 / A4</b>กรอบแบบ โซน กรอบชื่อแบบ ตาราง revision และ layer ครบ</div>
+    <div><b>แบบตัวอย่าง</b>ระบบน้ำหล่อเย็นเครื่องจักรกับเครื่องแลกเปลี่ยนความร้อนแบบแผ่น</div>
+    <div><b>ปลั๊กอิน PID signal line</b>วางลายเส้นสัญญาณและป้ายบอกน้ำ ตัดเส้นให้เองตามลาย</div>
+    <div><b>คู่มือปลั๊กอิน 1 หน้า</b>วิธีใช้ปลั๊กอินแบบย่อ พิมพ์แปะข้างจอ</div>
+  </div>
+  <h3>สารบัญ</h3>
+  {{TOC}}
+  <div class="box hero">
+    <p><b>อ่านอย่างไร</b> · บทที่ 1–6 เป็นหลักการ ใช้กับโปรแกรมไหนก็ได้ ·
+      บทที่ 7 เป็นวิธีตั้งค่าและขั้นตอนเขียนใน LibreCAD · บทที่ 8 คือแบบตัวอย่างพร้อมคำอธิบายและรายการตรวจ</p>
+    <p class="small mute">คำในวงเล็บเป็นชื่อภาษาอังกฤษที่ใช้ในแบบและในเมนูของ LibreCAD · ขนาดทั้งหมดเป็นมิลลิเมตรบนกระดาษ</p>
+  </div>
+  <figure class="fig cover-sheet">{{EXAMPLE_SMALL}}</figure>
+  <div class="meta"><span>LibreCAD 2.2.1.6 รุ่นแพตช์ (Kai) · ฉบับ 20 ต.ค. 2569 · {{PAGES}} หน้า</span>
+    <span class="mono">github.com/House41M5/LibreCAD · plugins/pidlines/</span></div>
+</section>
+
+<section class="page" data-head="บทที่ 1 · P&amp;ID คืออะไร" data-toc="1 · P&amp;ID คืออะไร">
+  <h2><span class="no">1</span>P&amp;ID คืออะไร</h2>
+  <p class="lead">P&amp;ID (Piping &amp; Instrumentation Diagram) คือแบบที่บอกว่าระบบหนึ่งมีท่อ อุปกรณ์ วาล์ว
+    เครื่องวัด และระบบควบคุมอะไรบ้าง ต่อกันอย่างไร และควบคุมกันอย่างไร โดยไม่สนตำแหน่งหรือระยะจริง
+    (ไม่ตามมาตราส่วน · NTS)</p>
+  <h3>ใช้ทำอะไร</h3>
+  <ul>
+    <li><b>ออกแบบและสั่งซื้อ</b> นับวาล์ว เครื่องวัด และขนาดท่อจากแบบ</li>
+    <li><b>ติดตั้งและตรวจรับ</b> ช่างเดินท่อและเดินสายตาม tag ในแบบ</li>
+    <li><b>เดินเครื่องและซ่อมบำรุง</b> หาวาล์วที่ต้องปิดหรือเปิด จุดวัด และลูปควบคุม</li>
+    <li><b>ความปลอดภัย</b> ใช้ทบทวนความเสี่ยง (เช่น HAZOP) และเลือกตำแหน่งวาล์วเมื่อไฟหรือลมดับ</li>
+    <li><b>ระบบข้อมูล</b> tag ในแบบใช้เป็นชื่อจุดข้อมูลใน PLC, SCADA หรือระบบ IoT ได้ตรงกันทุกที่</li>
+  </ul>
+  <h3>P&amp;ID ต่างจาก PFD อย่างไร</h3>
+  <table class="plain">
+    <thead><tr><th style="width:26mm">เรื่อง</th><th>PFD (Process Flow Diagram)</th><th>P&amp;ID</th></tr></thead>
+    <tbody>
+      <tr><td>จุดประสงค์</td><td>ภาพรวมกระบวนการ สมดุลมวลและพลังงาน</td><td>รายละเอียดสำหรับสร้าง เดินเครื่อง และซ่อมระบบ</td></tr>
+      <tr><td>อุปกรณ์</td><td>อุปกรณ์หลักเท่านั้น</td><td>ทุกตัว รวมปั๊มสำรอง ตัวกรอง ถังเล็ก</td></tr>
+      <tr><td>ท่อ</td><td>เส้นทางไหลหลัก</td><td>ทุกเส้น พร้อมขนาดและเลขท่อ</td></tr>
+      <tr><td>วาล์ว เครื่องวัด</td><td>เฉพาะตัวที่สำคัญต่อการควบคุม</td><td>ทุกตัว พร้อม tag และชนิดสัญญาณ</td></tr>
+      <tr><td>ข้อมูลสภาวะ</td><td>อุณหภูมิ ความดัน อัตราไหล ตามจุด</td><td>ไม่ใส่ (อยู่ในเอกสาร datasheet)</td></tr>
+    </tbody>
+  </table>
+  {{FIG_PFD}}
+  <h3>ในแบบควรมีอะไร</h3>
+  <div class="two">
+    <div>
+      <p><b>ควรมี</b></p>
+      <ul>
+        <li>อุปกรณ์ทุกตัว พร้อม tag และชื่อสั้น</li>
+        <li>ท่อทุกเส้น พร้อมเลขท่อ ขนาด และทิศการไหล</li>
+        <li>วาล์วทุกตัว รวม drain และ vent</li>
+        <li>เครื่องวัด ลูปควบคุม และชนิดสัญญาณ</li>
+        <li>อินเตอร์ล็อก และตำแหน่งวาล์วเมื่อไฟหรือลมดับ</li>
+        <li>ป้ายต่อแผ่นอื่น หมายเหตุ กรอบชื่อแบบ ประวัติแก้ไข</li>
+      </ul>
+    </div>
+    <div>
+      <p><b>ไม่ควรมี</b> (อยู่ในเอกสารอื่น)</p>
+      <ul>
+        <li>ตำแหน่งและระยะท่อจริง → แบบ layout หรือ isometric</li>
+        <li>สายไฟ ขั้วต่อ ตู้ไฟ → loop diagram และแบบไฟฟ้า</li>
+        <li>spec ละเอียดของอุปกรณ์ → datasheet</li>
+        <li>รายละเอียดโปรแกรม PLC → เอกสาร control narrative</li>
+      </ul>
+    </div>
+  </div>
+  <h3>ชุดแบบและมาตรฐาน</h3>
+  <p>ระบบหนึ่งมักมีหลายแผ่น แผ่นแรกเป็น <b>legend</b> (คำอธิบายสัญลักษณ์และตัวย่อ) แผ่นถัดไปแยกตามระบบ
+    และแผ่นที่ต่อกันใช้ป้ายต่อแผ่นชี้หากัน</p>
+  <p>สัญลักษณ์เครื่องวัดและตัวอักษร tag ในคู่มือนี้ยึด <b>ISA-5.1</b> ซึ่งใช้แพร่หลายในงาน process ส่วนสัญลักษณ์วาล์วและอุปกรณ์อิงแบบที่ใช้กันทั่วไป
+    (เทียบกับตารางสัญลักษณ์ของ geminivalve.com) มาตรฐานอื่นที่อาจเจอคือ ISO 10628 และ ISO 14617 ซึ่งนิยมในยุโรป</p>
+  <div class="box"><p>ถ้าโครงการหรือลูกค้ามี legend ของตัวเอง ให้ยึด legend นั้นก่อนคู่มือนี้เสมอ
+    และแนบ legend ไปกับชุดแบบทุกครั้ง</p></div>
+</section>
+
+<section class="page" data-head="บทที่ 2 · กฎการเขียนแบบ" data-toc="2 · กฎการเขียนแบบ">
+  <h2><span class="no">2</span>กฎการเขียนแบบ</h2>
+  <div class="two">
+    <div>
+      <h3>แผ่นแบบและมาตราส่วน</h3>
+      <ul>
+        <li>A3 แนวนอนเป็นขนาดที่ใช้มากที่สุด ระบบใหญ่ใช้ A1</li>
+        <li>P&amp;ID ไม่ตามมาตราส่วน วาดทุกอย่างบนกระดาษ 1:1 หน่วยมิลลิเมตร สัญลักษณ์ในไลบรารีมีขนาดพอดี A3 แล้ว</li>
+        <li>เครื่องพิมพ์รับได้แค่ A4: ใช้แม่แบบ A4 (สัญลักษณ์ขนาดเท่าเดิม พื้นที่น้อยลง)
+          หรือพิมพ์แบบ A3 ย่อลง A4 ที่ 71% (ตัวอักษร 2.5 มม. เหลือ 1.8 มม. ยังอ่านได้)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>การจัดวาง</h3>
+      <ul>
+        <li>การไหลหลักจากซ้ายไปขวา ทางเข้าระบบอยู่ซ้าย ทางออกอยู่ขวา</li>
+        <li>ถังสูงและหอผึ่งเย็นอยู่บน ปั๊มอยู่ล่าง ใกล้ของจริงพอให้เข้าใจ</li>
+        <li>ท่อเป็นเส้นแนวนอนหรือแนวตั้ง หักมุม 90° ไม่ลากเฉียง</li>
+        <li>เส้นขนานห่างกันอย่างน้อย 7–10 มม. เผื่อที่เขียนเลขท่อ</li>
+        <li>เครื่องวัดอยู่ใกล้จุดที่วัด เส้นต่อสั้นที่สุด</li>
+        <li>เว้นที่ว่างไว้ แบบที่โล่งอ่านเร็วกว่าแบบที่อัดแน่น</li>
+      </ul>
+    </div>
+  </div>
+  <h3>ความหนาเส้นและขนาดตัวอักษร</h3>
+  <div class="two">
+    <table>
+      <thead><tr><th>เส้น</th><th class="num">หนา มม.</th></tr></thead>
+      <tbody>
+        <tr><td>ท่อ process หลัก</td><td class="num">0.70</td></tr>
+        <tr><td>อุปกรณ์หลัก กรอบแบบ</td><td class="num">0.50</td></tr>
+        <tr><td>วาล์ว เครื่องวัด ท่อรอง เส้นต่อเครื่องวัด</td><td class="num">0.35</td></tr>
+        <tr><td>เส้นสัญญาณ ตัวอักษร เส้นแบ่งช่อง</td><td class="num">0.25</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>ตัวอักษร (ฟอนต์ iso ตัวพิมพ์ใหญ่)</th><th class="num">สูง มม.</th></tr></thead>
+      <tbody>
+        <tr><td>ชื่อแบบในกรอบชื่อแบบ</td><td class="num">4.0</td></tr>
+        <tr><td>tag อุปกรณ์ เช่น P-101A</td><td class="num">3.0</td></tr>
+        <tr><td>tag ในวงกลมเครื่องวัด เช่น TIC 105</td><td class="num">2.5</td></tr>
+        <tr><td>เลขท่อ หมายเหตุ คำอธิบาย</td><td class="num">2.2–2.5</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small mute">ค่าเหล่านี้ตั้งไว้ใน layer ของแม่แบบแล้ว (บทที่ 7) วาดบน layer ที่ถูกต้อง ความหนาก็ถูกเอง</p>
+  <h3>เส้นตัดกันและเส้นต่อกัน</h3>
+  {{FIG_CROSSING}}
+  <p>เส้นที่ไม่ต่อกันต้องเว้นช่องที่จุดตัด ไม่อย่างนั้นคนอ่านจะไม่รู้ว่าต่อหรือไม่ต่อ ปกติให้เส้นรองหรือเส้นที่วาดทีหลังเป็นฝ่ายเว้น
+    จุดต่อจริงทำเป็นตัว T และไม่ทำสี่แยก เพราะถ้าพิมพ์ไม่ชัดจะดูเหมือนเส้นตัดผ่านกัน</p>
+  <h3>ป้ายต่อแผ่นอื่นและโซน</h3>
+  <div class="two">
+    <div>
+      <ul>
+        <li>ท่อหรือสัญญาณที่ไปต่อแผ่นอื่น ใส่ป้าย <code>ann_offpage</code> ที่ปลายเส้น ชี้ไปทางที่ท่อไป</li>
+        <li>เขียนเลขแบบปลายทางในป้าย และเขียนอุปกรณ์หรือโซนปลายทางใต้ป้าย</li>
+        <li>แผ่นปลายทางต้องมีป้ายชี้กลับมาด้วย เลขท่อเหมือนกันทั้งสองแผ่น</li>
+        <li>กรอบแม่แบบมีโซน 1–8 ตามแนวนอน และ A–F ตามแนวตั้ง ใช้บอกตำแหน่ง เช่น "C4"</li>
+      </ul>
+    </div>
+    <figure class="fig">{{FIG_OFFPAGE}}<figcaption>ท่อ 100-CWS-102 ไปต่อที่แผ่น PID-002 โซน C4</figcaption></figure>
+  </div>
+  <h3>ขนาดสัญลักษณ์ในไลบรารี (มม. บนกระดาษ)</h3>
+  <table>
+    <tbody>
+      <tr><td>ตัววาล์ว ยาว × สูง</td><td class="num">6 × 3.6</td><td>เช็ควาล์ว ยาว</td><td class="num">4</td></tr>
+      <tr><td>ก้าน actuator จากกลางวาล์ว</td><td class="num">4</td><td>หัวขับ กว้าง</td><td class="num">3.2–3.6</td></tr>
+      <tr><td>วงกลมเครื่องวัด</td><td class="num">10</td><td>ปั๊ม เส้นผ่านศูนย์กลาง</td><td class="num">8</td></tr>
+      <tr><td>ลูกศรทิศการไหล ยาว</td><td class="num">2.5</td><td>ป้ายต่อแผ่น กว้าง × สูง</td><td class="num">20 × 6</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="page" data-head="บทที่ 3 · เส้นในแบบ" data-toc="3 · เส้นในแบบ">
+  <h2><span class="no">3</span>เส้นในแบบ</h2>
+  <p class="lead">เส้นในแบบมีสองพวก <b>ท่อ</b>คือทางที่ของไหลวิ่งจริง ส่วน<b>เส้นสัญญาณ</b>บอกว่าเครื่องวัด ตัวควบคุม และวาล์ว
+    ส่งข้อมูลหรือคำสั่งถึงกันด้วยอะไร</p>
+  {{SIGNALS}}
+  <p class="small mute">"ตัดเส้น" คือปลั๊กอินตัดเส้นใต้สัญลักษณ์ยาวตามค่า gap ใน pidlines.ini (มม. ที่สเกล 1) · "ไม่ตัด" คือวางทับเส้น</p>
+  <div class="two">
+    <div>
+      <h3>เลขท่อ (line number)</h3>
+      <p style="font-family:var(--mono);font-size:13pt;margin:1mm 0 0.5mm">100 - CWS - 102</p>
+      <p class="small"><b>100</b> ขนาด DN (มม.) · <b>CWS</b> รหัสบริการ · <b>102</b> ลำดับท่อในระบบ<br>
+        ขยายต่อได้ตามที่บริษัทใช้ เช่น <span class="tag">100-CWS-102-A1-N</span> (A1 = spec ท่อ, N = ไม่มีฉนวน)</p>
+      <ul>
+        <li>เขียนเหนือท่อ ขนานกับท่อ ท่อแนวตั้งหมุนตัวอักษร 90°</li>
+        <li>ท่อเปลี่ยนขนาด เปลี่ยนบริการ หรือแยกสาขา ต้องได้เลขใหม่</li>
+        <li>ลูกศร <code>ann_flow</code> วางบนท่อหลังจุดแยกและก่อนเข้าอุปกรณ์</li>
+        <li>ป้ายบอกน้ำ CWS CWR HWS HWR วางด้วยปลั๊กอิน ท่อยาวช่วงละ 1–2 ป้าย</li>
+      </ul>
+    </div>
+    <div>
+      <h3>รหัสบริการที่ใช้บ่อย</h3>
+      <table>
+        <tbody>
+          <tr><td class="mono">CWS / CWR</td><td>น้ำหล่อเย็น จ่าย / กลับ</td></tr>
+          <tr><td class="mono">HWS / HWR</td><td>น้ำร้อน จ่าย / กลับ</td></tr>
+          <tr><td class="mono">CHWS / CHWR</td><td>น้ำเย็นจาก chiller จ่าย / กลับ</td></tr>
+          <tr><td class="mono">MW</td><td>น้ำเติมระบบ (make-up)</td></tr>
+          <tr><td class="mono">IA / PA</td><td>ลมเครื่องมือวัด / ลมใช้งานทั่วไป</td></tr>
+          <tr><td class="mono">ST / CD</td><td>ไอน้ำ / คอนเดนเสท</td></tr>
+          <tr><td class="mono">DR / VT</td><td>ท่อระบายน้ำทิ้ง / ท่อระบายอากาศ</td></tr>
+          <tr><td class="mono">N2</td><td>ไนโตรเจน</td></tr>
+        </tbody>
+      </table>
+      <p class="small mute">เป็นตัวอย่างที่นิยมใช้ ถ้าบริษัทมีรายการรหัสอยู่แล้วให้ใช้ของบริษัท และเขียนไว้ใน legend</p>
+    </div>
+  </div>
+</section>
+
+<section class="page" data-head="บทที่ 4 · วาล์ว" data-toc="4 · วาล์ว actuator อุปกรณ์ท่อ">
+  <h2><span class="no">4</span>วาล์ว</h2>
+  <p class="lead">วาล์วทุกตัววางบนแนวท่อ จุดแทรกอยู่กลางวาล์ว ยาว 6 มม. (เช็ควาล์ว 4 มม.) และต้องตัดท่อใต้วาล์วออก
+    ด้วยคำสั่ง Line Gap (บทที่ 7) วาดบน layer PID-VALVE</p>
+  {{SYM_VALVES}}
+  <div class="box"><p>รูปที่แต่ละแหล่งวาดไม่เหมือนกัน เช่น gate valve บางบริษัทวาดเป็นรูปโบว์เปล่า ให้ใช้ตาม legend ของโครงการ
+    และถ้าไม่แน่ใจว่าเป็นวาล์วชนิดไหน ใช้ <code>vlv_generic</code> แล้วเขียนชนิดไว้ข้างวาล์ว</p></div>
+  <h3>เลือกวาล์วให้ตรงงาน</h3>
+  <table>
+    <thead><tr><th>วาล์ว</th><th>เหมาะกับ</th><th>วาล์ว</th><th>เหมาะกับ</th></tr></thead>
+    <tbody>
+      <tr><td>gate</td><td>เปิดสุดหรือปิดสุด (isolation) ไม่ใช้หรี่</td><td>globe</td><td>หรี่ ปรับอัตราการไหล</td></tr>
+      <tr><td>ball / plug</td><td>เปิด-ปิดเร็ว 1/4 รอบ</td><td>butterfly</td><td>ท่อใหญ่ เปิด-ปิด หรือปรับหยาบ</td></tr>
+      <tr><td>check</td><td>กันไหลกลับ เช่น ด้านส่งของปั๊ม</td><td>needle</td><td>ปรับละเอียด สายเครื่องวัด</td></tr>
+      <tr><td>diaphragm / pinch</td><td>ของเหลวสกปรก ตะกอน กัดกร่อน</td><td>relief (PSV)</td><td>กันความดันเกิน ห้ามมีวาล์วปิดขวาง</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="page" data-head="บทที่ 4 · actuator และตำแหน่งเมื่อไฟหรือลมดับ">
+  <h3>actuator (หัวขับ)</h3>
+  <p>แทรกตัววาล์วก่อน แล้วแทรก actuator <b>ที่จุดเดียวกัน</b> ก้านเริ่มที่กลางวาล์ว วาล์วควบคุม โซลินอยด์วาล์ว
+    และวาล์วมอเตอร์มีแบบประกอบเสร็จในหมวด 1 Valves แล้ว ส่วนที่เป็นสีเทาในตารางคือตัววาล์วที่ไว้ให้เห็นตำแหน่ง</p>
+  {{SYM_ACTUATORS}}
+  <figure class="fig">{{FIG_COMPOSE}}<figcaption>บอลวาล์ว + มอเตอร์ = วาล์วมอเตอร์ · วาล์ว + หัวขับลม + ลูกศรและตัวอักษร FC = วาล์วควบคุม fail closed</figcaption></figure>
+  <h3>ตำแหน่งเมื่อไฟหรือลมดับ (fail-safe)</h3>
+  <table class="plain">
+    <thead><tr><th>ตัวอักษร</th><th>วาล์วจะ</th><th>วาดอย่างไร</th><th>ใช้เมื่อ (ตัวอย่าง)</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">FO</td><td>เปิด (fail open)</td><td>ลูกศรบนก้านชี้ขึ้น <code>act_fail_open</code></td><td>ปิดแล้วอันตราย เช่น น้ำหล่อเย็น</td></tr>
+      <tr><td class="mono">FC</td><td>ปิด (fail closed)</td><td>ลูกศรชี้ลงหาวาล์ว <code>act_fail_closed</code></td><td>เปิดค้างแล้วอันตราย เช่น ไอน้ำ เชื้อเพลิง</td></tr>
+      <tr><td class="mono">FL</td><td>ค้างตำแหน่งเดิม (fail locked)</td><td>ตัวอักษร <code>act_label_fl</code></td><td>ขยับแล้วรบกวนกระบวนการ</td></tr>
+      <tr><td class="mono">FI</td><td>ไม่แน่นอน (fail indeterminate)</td><td>ตัวอักษร <code>act_label_fi</code></td><td>วาล์วที่ตำแหน่งตอนดับระบุไม่ได้</td></tr>
+    </tbody>
+  </table>
+  <p>เลือกตำแหน่งตามความปลอดภัยของกระบวนการ ไม่ใช่ตามความสะดวก ใส่ทั้งลูกศรและตัวอักษรก็ได้
+    (แบบตัวอย่างใส่ทั้งคู่ที่ TV-105)</p>
+  <h3>ปลายต่อ (end connection)</h3>
+  {{SYM_ENDS}}
+  <p class="small">วางชิดปลายวาล์วทั้งสองข้างเมื่ออยากบอกชนิดการต่อ ถ้า spec ท่อกำหนดการต่อไว้แล้ว ไม่ต้องใส่ทุกวาล์ว</p>
+</section>
+
+<section class="page" data-head="บทที่ 4 · อุปกรณ์ท่อและป้าย">
+  <h3>อุปกรณ์ท่อ (piping components)</h3>
+  {{SYM_FITTINGS}}
+  <h3>ป้ายในแบบ (annotation)</h3>
+  {{SYM_ANNOTATION}}
+  <h3>การต่อท่อปั๊มที่ใช้กันทั่วไป</h3>
+  <figure class="fig">{{FIG_PUMP}}<figcaption>1 gate valve ด้านดูด · 2 ตัวกรอง Y · 3 ข้อลดเยื้องศูนย์ ด้านเรียบอยู่บน · 4 ข้อลดศูนย์ตรง ·
+    5 เช็ควาล์ว · 6 gate valve ด้านส่ง · PI ระหว่างปั๊มกับเช็ควาล์ว · DR ระบายน้ำก่อนถอดซ่อม</figcaption></figure>
+  <h3>drain vent และจุดเก็บตัวอย่าง</h3>
+  {{FIG_DRAINS}}
+  <div class="two">
+    <div>
+      <ul>
+        <li>วาดเป็นท่อสั้นบนท่อหลัก ต่อวาล์ว 1 ตัว แล้วปล่อยปลายเปิด บน layer PID-PIPE-MINOR</li>
+        <li>vent อยู่จุดสูงสุด drain อยู่จุดต่ำสุดของท่อหรืออุปกรณ์</li>
+        <li>เขียนกำกับ VT DR หรือ SP (sample point) ที่ปลายท่อ</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li>ข้อลดวางตรงจุดเปลี่ยนขนาดท่อ และเปลี่ยนเลขท่อหลังข้อลด</li>
+        <li>ข้อลดเยื้องศูนย์ด้านดูดของปั๊มมักวางด้านเรียบไว้บน กันอากาศค้าง สัญลักษณ์ในไลบรารีด้านเรียบอยู่ล่าง ใช้ Mirror พลิกได้</li>
+        <li>ตัวกรอง Y วางบนท่อได้เลยไม่ต้องตัดท่อ และมักมี PDI คร่อมไว้ดูความตัน</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page equip" data-head="บทที่ 5 · อุปกรณ์หลัก" data-toc="5 · อุปกรณ์หลัก">
+  <h2><span class="no">5</span>อุปกรณ์หลัก</h2>
+  <p class="lead">อุปกรณ์ไม่ต้องตามมาตราส่วน แต่ควรมีขนาดสัมพันธ์กัน ขยายได้ตอนแทรก (factor 1.2–2) วาดบน layer PID-EQUIP</p>
+  {{SYM_EQUIPMENT}}
+  <h3>tag อุปกรณ์</h3>
+  <div class="two">
+    <table>
+      <tbody>
+        <tr><td class="mono">P</td><td>ปั๊ม เช่น P-101A, P-101B</td></tr>
+        <tr><td class="mono">C / K</td><td>คอมเพรสเซอร์</td></tr>
+        <tr><td class="mono">B / FN</td><td>โบลเวอร์ พัดลม</td></tr>
+        <tr><td class="mono">E</td><td>เครื่องแลกเปลี่ยนความร้อน</td></tr>
+        <tr><td class="mono">CT</td><td>หอผึ่งเย็น</td></tr>
+        <tr><td class="mono">T / TK · V</td><td>ถังเก็บ · ถังความดัน ดรัม</td></tr>
+        <tr><td class="mono">F · STR</td><td>ตัวกรอง · ตะแกรงกรอง</td></tr>
+        <tr><td class="mono">M</td><td>มอเตอร์ หรือเครื่องจักร</td></tr>
+      </tbody>
+    </table>
+    <div>
+      <ul>
+        <li>tag = อักษรชนิดอุปกรณ์ + เลข เช่น P-101 (ระบบ 1 ลำดับ 01)</li>
+        <li>เครื่องทำงานและเครื่องสำรองใช้เลขเดียวกัน ต่อท้าย A, B</li>
+        <li>เขียน tag สูง 3 มม. ใต้หรือข้างอุปกรณ์ บรรทัดถัดไปเป็นชื่อสั้นสูง 2.2 มม.</li>
+        <li>อักษรชนิดอุปกรณ์ไม่มีในมาตรฐาน ISA ตารางนี้เป็นแบบที่นิยมใช้ ให้ใช้ของบริษัทถ้ามี</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page" data-head="บทที่ 6 · เครื่องวัด" data-toc="6 · เครื่องวัดและ tag">
+  <h2><span class="no">6</span>เครื่องวัด</h2>
+  <p class="lead">เครื่องวัดแต่ละตัวเขียนเป็นสัญลักษณ์ขนาด 10 มม. (ISA-5.1) <b>รูปทรง</b>บอกว่าเป็นอุปกรณ์แบบไหน
+    <b>เส้นกลาง</b>บอกว่าติดตั้งหรือแสดงผลที่ไหน วาดบน layer PID-INST</p>
+  {{IMATRIX}}
+  <div class="two" style="margin-top:3mm">
+    <figure class="fig">{{FIG_BUBBLE}}<figcaption>tag ในวงกลม ตัวอักษร iso สูง 2.5 จัดกลาง ที่ +2 และ −2 มม. จากจุดศูนย์กลาง</figcaption></figure>
+    <div>
+      <h3>เขียน tag ในวงกลม</h3>
+      <ul>
+        <li>บรรทัดบนคืออักษรบอกหน้าที่ เช่น TT, TIC บรรทัดล่างคือเลขลูป</li>
+        <li>อักษรเกิน 4 ตัวหรือวงกลมคับ ให้ขยายสัญลักษณ์ 1.2 เท่า แล้วขยับตัวอักษรตาม</li>
+        <li>เส้นต่อจากท่อใช้เส้นบางบน layer PID-PIPE-MINOR ลากถึงขอบวง ไม่เข้าไปถึงกลาง</li>
+      </ul>
+    </div>
+  </div>
+  <div class="box"><p>สัญลักษณ์บอก<b>หน้าที่และตำแหน่ง</b> ไม่ใช่รูปร่างของเครื่องวัดจริง ค่าที่แสดงบนจอ HMI ใช้วงกลมในสี่เหลี่ยม
+    ฟังก์ชันที่ทำใน PLC ใช้ข้าวหลามตัดในสี่เหลี่ยม เครื่องวัดหน้างานใช้วงกลมเปล่า</p></div>
+  <h3>ต่อเครื่องวัดเข้ากับท่อและถัง</h3>
+  {{FIG_INSTCONN}}
+</section>
+
+<section class="page" data-head="บทที่ 6 · ตัวอักษรระบุหน้าที่ (ISA-5.1)">
+  <h3>อ่าน tag อย่างไร</h3>
+  <p>tag เริ่มด้วย<b>อักษรตัวแรก</b>บอกตัวแปรที่วัด (ตามด้วยตัวขยายถ้ามี) แล้วตามด้วย<b>อักษรบอกหน้าที่</b> และ<b>เลขลูป</b>
+    เช่น <span class="tag">TIC-105</span> = Temperature · Indicating · Controller ลูป 105 ·
+    <span class="tag">PDI-102</span> = Pressure · Differential · Indicator ·
+    <span class="tag">LSL-108</span> = Level · Switch · Low</p>
+  {{LETTERS}}
+  <p class="small mute" style="margin-top:1.5mm">ตัวขยายของหน้าที่: H สูง · L ต่ำ · M กลาง · HH, LL สูงมาก ต่ำมาก ·
+    "เลือกเอง" คืออักษรที่โครงการกำหนดความหมายเองได้ แล้วต้องเขียนไว้ใน legend ·
+    ตารางนี้ย่อจาก ISA-5.1 เหลือเฉพาะความหมายที่ใช้บ่อย</p>
+  <h3>แยกส่วน tag</h3>
+  <table class="anat">
+    <thead><tr><th>tag</th><th>ตัวแปร</th><th>ตัวขยาย</th><th>หน้าที่</th><th>ตัวขยายหน้าที่</th><th>ความหมาย</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">TIC</td><td>T</td><td></td><td>I C</td><td></td><td>แสดงค่าและควบคุมอุณหภูมิ</td></tr>
+      <tr><td class="mono">FQI</td><td>F</td><td>Q</td><td>I</td><td></td><td>แสดงยอดรวมการไหล (totalizer)</td></tr>
+      <tr><td class="mono">PDT</td><td>P</td><td>D</td><td>T</td><td></td><td>ส่งสัญญาณผลต่างความดัน</td></tr>
+      <tr><td class="mono">LSL</td><td>L</td><td></td><td>S</td><td>L</td><td>สวิตช์ระดับต่ำ</td></tr>
+      <tr><td class="mono">TAHH</td><td>T</td><td></td><td>A</td><td>HH</td><td>เตือนอุณหภูมิสูงมาก</td></tr>
+      <tr><td class="mono">PSV</td><td>P</td><td>S</td><td>V</td><td></td><td>วาล์วนิรภัยความดัน</td></tr>
+      <tr><td class="mono">XV</td><td>X</td><td></td><td>V</td><td></td><td>วาล์วเปิด-ปิดที่ไม่เข้าหมวดอื่น (on/off)</td></tr>
+      <tr><td class="mono">TY</td><td>T</td><td></td><td>Y</td><td></td><td>อุปกรณ์เสริมในลูปอุณหภูมิ เช่น ตัวแปลง I/P</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="page" data-head="บทที่ 6 · tag และลูปควบคุม">
+  <h3>ลูปควบคุม (control loop)</h3>
+  <figure class="fig">{{FIG_LOOP}}<figcaption>ลูปควบคุมอุณหภูมิ 101: TT วัด → TIC ใน PLC คำนวณ → TY แปลงสัญญาณ 4-20 mA เป็นลม → TV ปรับวาล์ว (FC)</figcaption></figure>
+  <div class="two">
+    <div>
+      <h3>กติกาเลขลูป</h3>
+      <ul>
+        <li>ทุกตัวในลูปเดียวกันใช้เลขเดียวกัน TT-101, TIC-101, TY-101, TV-101</li>
+        <li>ตัวซ้ำในลูปเดียวกันต่อท้าย A, B เช่น PI-101A, PI-101B</li>
+        <li>แบ่งช่วงเลขตามระบบ เช่น 100–199 น้ำหล่อเย็น 200–299 เครื่องจักร</li>
+        <li>เลขที่เคยใช้แล้วไม่นำกลับมาใช้ใหม่ แม้ถอดอุปกรณ์ออก</li>
+        <li>tag เดียวกันในแบบ ใน PLC และป้ายที่หน้างาน ต้องสะกดตรงกัน</li>
+      </ul>
+    </div>
+    <div>
+      <h3>tag ที่เจอบ่อย</h3>
+      <table>
+        <tbody>
+          <tr><td class="mono">FT · FE</td><td>ส่งสัญญาณอัตราไหล · ตัวตรวจจับอัตราไหล</td></tr>
+          <tr><td class="mono">FQI</td><td>แสดงยอดรวมการไหล</td></tr>
+          <tr><td class="mono">TT · TI · TW</td><td>ส่งสัญญาณ · แสดง อุณหภูมิ · ปลอกวัด</td></tr>
+          <tr><td class="mono">PT · PI · PDI</td><td>ความดัน · ผลต่างความดัน (คร่อมตัวกรอง)</td></tr>
+          <tr><td class="mono">LT · LG · LSL</td><td>ระดับ · หลอดดูระดับ · สวิตช์ระดับต่ำ</td></tr>
+          <tr><td class="mono">TIC · LIC · FIC</td><td>ตัวควบคุมอุณหภูมิ ระดับ อัตราไหล</td></tr>
+          <tr><td class="mono">TV · FV · LV</td><td>วาล์วควบคุมของลูปนั้น</td></tr>
+          <tr><td class="mono">PSV · PCV</td><td>วาล์วนิรภัย · เรกูเลเตอร์ความดัน</td></tr>
+          <tr><td class="mono">XV · ZSO / ZSC</td><td>วาล์วเปิด-ปิดอัตโนมัติ · สวิตช์บอกตำแหน่ง</td></tr>
+          <tr><td class="mono">HS · TY</td><td>สวิตช์มือ · ตัวแปลงสัญญาณ (เช่น I/P)</td></tr>
+          <tr><td class="mono">AT · ST · JT</td><td>วิเคราะห์ (pH ฯลฯ) · ความเร็วรอบ · กำลังไฟ</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <h3>เส้นสัญญาณระหว่างอะไรกับอะไร</h3>
+  <table>
+    <thead><tr><th>จาก → ถึง</th><th>สัญญาณที่ใช้กันบ่อย</th><th>เส้นในแบบ</th></tr></thead>
+    <tbody>
+      <tr><td>transmitter → PLC / ตัวควบคุม</td><td>ไฟฟ้า 4-20 mA หรือ on/off</td><td>เส้นประ (layer PID-SIGNAL-ELEC)</td></tr>
+      <tr><td>PLC → ตัวแปลง I/P → วาล์วควบคุม</td><td>ไฟฟ้า แล้วเปลี่ยนเป็นลม 20-100 kPa</td><td>เส้นประ แล้วต่อด้วยเส้นลาย //</td></tr>
+      <tr><td>PLC → โซลินอยด์วาล์ว</td><td>ไฟฟ้า on/off</td><td>เส้นประ ถึงกล่อง S</td></tr>
+      <tr><td>PLC ↔ จอ HMI ในระบบเดียวกัน</td><td>สื่อสารข้อมูลภายในระบบ</td><td>ลิงก์ข้อมูลจุดขาว —o—</td></tr>
+      <tr><td>PLC ↔ ระบบอื่น (SCADA, IoT gateway, PLC อีกตัว)</td><td>สื่อสารระหว่างระบบอิสระ</td><td>ลิงก์ข้อมูลจุดดำ —●—</td></tr>
+      <tr><td>หัววัดอุณหภูมิแบบเติมของเหลว → เกจ</td><td>ท่อ capillary</td><td>เส้นลาย X</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="page" data-head="บทที่ 7 · ตั้งค่า LibreCAD" data-toc="7 · LibreCAD: ตั้งค่าและขั้นตอนเขียน">
+  <h2><span class="no">7</span>ตั้งค่า LibreCAD</h2>
+  <h3>ไฟล์ที่ติดตั้งไว้</h3>
+  <table class="plain">
+    <tbody>
+      <tr><td class="mono">Documents\LibreCAD\library\PID\</td><td>ไลบรารีสัญลักษณ์ 6 หมวด (เปิดจาก Library Browser)</td></tr>
+      <tr><td class="mono">Documents\LibreCAD\templates\</td><td>แม่แบบ <code>PID_A3.dxf</code> <code>PID_A4.dxf</code> และแบบตัวอย่าง <code>PID_example_cooling_water.dxf</code></td></tr>
+      <tr><td class="mono">Documents\LibreCAD\plugins\ · pidlines\</td><td>ปลั๊กอิน PID signal line และไฟล์ลาย</td></tr>
+      <tr><td class="mono">Documents\</td><td>คู่มือเล่มนี้ <code>PID_drafting_guide.pdf</code> และคู่มือปลั๊กอิน <code>PID_signal_line_manual_A4.pdf</code></td></tr>
+    </tbody>
+  </table>
+  <h3>เริ่มแบบใหม่จากแม่แบบ</h3>
+  <ul>
+    <li><span class="mi">File → New From Template</span> เลือก <code>PID_A3.dxf</code> แล้ว <span class="mi">File → Save As</span> ตั้งชื่อใหม่ทันที เพื่อไม่ให้ทับแม่แบบ</li>
+    <li>ตั้งเป็นแม่แบบประจำ: <span class="mi">Options → Application Preferences</span> แท็บ <b>Paths</b> ช่อง <b>Template:</b> ต่อไป <span class="mi">File → New</span> จะเปิดแม่แบบนี้เลย</li>
+    <li>แม่แบบตั้งกระดาษและสเกลพิมพ์ 1:1 ไว้แล้ว และตั้ง layer ปัจจุบันเป็น PID-PIPE-MAIN</li>
+  </ul>
+  <h3>layer ในแม่แบบ</h3>
+  {{LAYERS}}
+  <p class="small mute">สี 7 เป็นสีขาวบนพื้นจอดำ และพิมพ์ออกเป็นดำ · สีของ layer ไว้แยกดูบนจอ ตอนพิมพ์ใช้โหมดขาวดำ</p>
+  <div class="setup" style="margin-top:2mm">
+    <ul>
+      <li><b>Library Browser:</b> <span class="mi">Widgets → Dock Widgets → Library Browser</span> โฟลเดอร์ <b>PID</b> อยู่บนสุด
+        เลือกหมวด เลือกสัญลักษณ์ แล้วกด <kbd>Insert</kbd></li>
+      <li><b>Layer Tree:</b> LibreCAD จัดกลุ่ม layer ตามขีด <code>-</code> layer ของแม่แบบจึงอยู่ใต้กลุ่ม <b>PID</b>
+        (PID ▸ PIPE ▸ MAIN) กดลูกศรหน้า PID เพื่อกางออก</li>
+      <li><b>grid:</b> <span class="mi">Options → Current Drawing Preferences</span> ตั้ง grid 2.5 มม. แล้วเปิด snap to grid ตอนวางสัญลักษณ์และท่อ</li>
+      <li><b>ปลั๊กอิน:</b> <span class="mi">Plugins → P&amp;ID signal line</span> (ต้องเป็น LibreCAD รุ่นแพตช์)</li>
+      <li><b>ตัวอักษร:</b> text style <code>iso</code> สำหรับอังกฤษและตัวเลข <code>thsarabunnew</code> สำหรับไทย
+        LibreCAD ใช้ชื่อ style เป็นชื่อฟอนต์</li>
+      <li><b>พิมพ์:</b> <span class="mi">File → Print Preview</span> กระดาษ A3 (หรือ A4 กับแม่แบบ A4) สเกล 1:1
+        กดปุ่ม Black / White ให้เส้นสีออกเป็นดำ</li>
+    </ul>
+    <figure class="shot"><img src="img/lc_docks.png" alt="Layer Tree และ Library Browser ใน LibreCAD"><figcaption>หน้าจอจริง: กลุ่ม PID ใน Layer Tree และโฟลเดอร์ PID ใน Library Browser</figcaption></figure>
+  </div>
+</section>
+
+<section class="page" data-head="บทที่ 7 · ขั้นตอนเขียนใน LibreCAD (1)">
+  <h3>ขั้นตอนเขียน</h3>
+  <ol class="steps">
+    <li><div><b class="t">เตรียมข้อมูลก่อนวาด</b>ร่างระบบบนกระดาษหรือจาก PFD ทำรายการอุปกรณ์ เครื่องวัด และเลขท่อ จะวาดเร็วและไม่ต้องย้ายของบ่อย</div></li>
+    <li><div><b class="t">วางอุปกรณ์หลัก</b>เลือก layer <code>PID-EQUIP</code> · Library Browser → PID → 4 Equipment → เลือกสัญลักษณ์ → <kbd>Insert</kbd>
+      → ตั้ง Angle และ Factor ในแถบตัวเลือก → คลิกจุดวางบน grid</div></li>
+    <li><div><b class="t">ลากท่อ</b>layer <code>PID-PIPE-MAIN</code> · <span class="mi">Tools → Line → 2 Points</span> (คำสั่ง <kbd>li</kbd>) ลากเป็นเส้นตรงทีละช่วง
+      ใช้ LINE ไม่ใช้ polyline เพราะ Line Gap ตัดได้เฉพาะ LINE</div></li>
+    <li><div><b class="t">ใส่วาล์วแล้วตัดท่อ</b>layer <code>PID-VALVE</code> · แทรกวาล์วที่จุดบนท่อ แล้วใช้ <span class="mi">Tools → Modify → Line Gap</span> (คำสั่ง <kbd>gl</kbd>)
+      ตั้ง Gap size <b>6</b> (เช็ควาล์ว 4) · Line snap <b>Free</b> · Gap snap <b>Middle</b> แล้วคลิกที่กลางวาล์ว</div></li>
+    <li><div><b class="t">ใส่ actuator และตำแหน่งเมื่อดับ</b>แทรก actuator ลูกศร และตัวอักษร FO/FC ที่จุดเดียวกับวาล์ว หรือใช้แบบประกอบเสร็จ
+      <code>vlv_control</code> <code>vlv_solenoid</code> <code>vlv_motor</code></div></li>
+    <li><div><b class="t">วางเครื่องวัด</b>layer <code>PID-INST</code> · แทรกสัญลักษณ์ให้จุดศูนย์กลางอยู่บน grid แล้วลากเส้นต่อจากท่อบน layer <code>PID-PIPE-MINOR</code> ถึงขอบวง</div></li>
+  </ol>
+  <h3>ขั้นที่ 4–5 ทีละภาพ</h3>
+  {{FIG_INLINE}}
+  <div class="box"><p>Line snap = Free คือใช้จุดที่คลิก · Gap snap = Middle คือให้จุดที่คลิกเป็นกลางช่อง
+    ถ้าวาล์ววางบน grid ก็คลิกจุด grid เดิม ช่องจะพอดีกับวาล์ว · ใช้ค่าเดียวกันเว้นช่องเส้นตัดกัน (Gap size 2)</p></div>
+  <h3>เขียนทีละชั้น</h3>
+  {{FIG_BUILDUP}}
+  <p class="small mute">วาดตามลำดับนี้ทั้งแผ่นทีละชั้น ไม่ต้องทำให้เสร็จทีละจุด จะจัดระยะง่ายกว่า และไม่ต้องย้ายวาล์วกับเครื่องวัดตามท่อบ่อย</p>
+</section>
+
+<section class="page" data-head="บทที่ 7 · ขั้นตอนเขียนใน LibreCAD (2)">
+  <ol class="steps" style="counter-reset: s 6">
+    <li><div><b class="t">เขียน tag</b>layer <code>PID-TEXT</code> · <span class="mi">Tools → Dimension → Text</span> (คำสั่ง <kbd>tx</kbd>) style <code>iso</code> สูง 2.5
+      จัด Middle Center วางที่ +2 และ −2 มม. จากศูนย์กลางวง (ตั้ง grid 1 มม. ชั่วคราวจะคลิกง่าย) · tag อุปกรณ์สูง 3</div></li>
+    <li><div><b class="t">เส้นสัญญาณ</b><b>ไฟฟ้า:</b> layer <code>PID-SIGNAL-ELEC</code> ลากเส้นธรรมดา เป็นเส้นประเอง ·
+      <b>ลม ข้อมูล และอื่นๆ:</b> layer <code>PID-SIGNAL</code> ลากเส้น → เลือกเส้น → <span class="mi">Plugins → P&amp;ID signal line</span>
+      → เลือกลาย ระยะห่าง 12 สเกล 1 → <kbd>OK</kbd> → <kbd>Enter</kbd></div></li>
+    <li><div><b class="t">เลขท่อ ลูกศร ป้ายบอกน้ำ</b>เลขท่อสูง 2.2 เหนือท่อ · ลูกศร <code>ann_flow</code> หมุนตามทิศการไหล ·
+      ป้าย CWS CWR HWS HWR ใช้ปลั๊กอินบนท่อ ระยะห่าง 40</div></li>
+    <li><div><b class="t">เส้นตัดกัน</b>เส้นที่ไม่ต่อกันเว้นช่อง 2 มม. ด้วย Line Gap (Gap size 2, Gap snap Middle) คลิกที่จุดตัด</div></li>
+    <li><div><b class="t">กรอบชื่อแบบ</b>ดับเบิลคลิกข้อความในกรอบเพื่อแก้เลขแบบ ชื่อแบบ วันที่ ผู้เขียน และเพิ่มบรรทัดในตาราง revision ทุกครั้งที่แก้แบบ</div></li>
+    <li><div><b class="t">ตรวจแล้วพิมพ์</b>ไล่รายการตรวจท้ายเล่ม → <span class="mi">File → Print Preview</span> A3 1:1 ขาวดำ → เก็บทั้งไฟล์ DXF และ PDF</div></li>
+  </ol>
+  <h3>ปลั๊กอิน PID signal line โดยย่อ</h3>
+  <div class="two">
+    <ul>
+      <li>หลายเส้นพร้อมกัน: ลากกรอบเลือกเส้นไว้ก่อน แล้วค่อยเรียกปลั๊กอิน</li>
+      <li>เปลี่ยนลายหรือระยะห่าง: รันซ้ำแล้วคลิกท่อนใดก็ได้ของเส้นเดิม ลายเดิมถูกแทนที่</li>
+      <li>เอาลายออก: เลือก "(ลบสัญลักษณ์อย่างเดียว · ต่อเส้นกลับ)"</li>
+      <li>วางผิด: <kbd>Ctrl+Z</kbd> ย้อนทั้งรอบ</li>
+    </ul>
+    <ul>
+      <li>ลายจะตัดเส้นหรือไม่ ขึ้นกับค่า gap ของลายใน pidlines.ini ไม่มีให้เลือกในหน้าต่าง</li>
+      <li>ลาย // บนเส้นชันเอียงทางเดียวกับบนเส้นแนวนอน · L บนเส้นแนวตั้งตั้งตรง</li>
+      <li>รายละเอียดทั้งหมดอยู่ในคู่มือปลั๊กอิน 1 หน้า</li>
+    </ul>
+  </div>
+  <h3>คำสั่งที่ใช้บ่อย (พิมพ์ในช่อง Command แล้ว Enter)</h3>
+  <table class="cmds">
+    <tbody>
+      <tr><td><kbd>li</kbd></td><td>ลากเส้น (line)</td><td><kbd>gl</kbd></td><td>เว้นช่องในเส้น (line gap)</td><td><kbd>tx</kbd></td><td>ข้อความ (text)</td></tr>
+      <tr><td><kbd>mv</kbd></td><td>ย้าย (move)</td><td><kbd>ro</kbd></td><td>หมุน (rotate)</td><td><kbd>mi</kbd></td><td>สะท้อน (mirror)</td></tr>
+      <tr><td><kbd>tm</kbd></td><td>ตัดเส้นถึงขอบ (trim)</td><td><kbd>mo</kbd></td><td>เส้นขนาน (offset)</td><td><kbd>ma</kbd></td><td>เปลี่ยน layer สี เส้น (attributes)</td></tr>
+      <tr><td><kbd>er</kbd></td><td>ลบ (erase)</td><td><kbd>id</kbd></td><td>วัดระยะ (distance)</td><td><kbd>za</kbd></td><td>ซูมเห็นทั้งแบบ</td></tr>
+    </tbody>
+  </table>
+  <div class="box warn">
+    <p><b>ข้อควรระวัง</b></p>
+    <ul>
+      <li>อย่าตั้งชื่อบล็อกของตัวเองขึ้นต้นด้วย <code>pid_</code> ปลั๊กอินจะถือว่าเป็นลายของมัน และลบทิ้งตอนวางลายซ้ำบนเส้นนั้น</li>
+      <li>อย่าระเบิดบล็อก (Explode) สัญลักษณ์ถ้าไม่จำเป็น จะนับจำนวนวาล์วและเครื่องวัดจากบล็อกไม่ได้ และแก้ทีหลังยาก</li>
+      <li>เส้นที่ตัดด้วยปลั๊กอินแล้ว อย่าย้ายหรือ trim ท่อนเส้นเอง ไม่อย่างนั้นปลั๊กอินต่อเส้นกลับไม่ได้</li>
+      <li>แก้ไฟล์สัญลักษณ์ในไลบรารีทีหลัง แบบที่มีบล็อกนั้นอยู่แล้วจะยังใช้รูปเดิม ต้องลบบล็อกเดิมใน Block List ก่อน</li>
+    </ul>
+  </div>
+</section>
+
+<section class="page land" data-head="บทที่ 8 · แบบตัวอย่าง" data-toc="8 · แบบตัวอย่างและรายการตรวจ">
+  <div class="sheet-wrap">{{EXAMPLE}}</div>
+  <p class="caption">แบบตัวอย่าง PID-EX-001 ย่อจาก A3 · ไฟล์ <span class="mono">Documents\LibreCAD\templates\PID_example_cooling_water.dxf</span> เปิดใน LibreCAD แล้วแก้ต่อได้</p>
+</section>
+
+<section class="page" data-head="บทที่ 8 · อ่านแบบตัวอย่างและรายการตรวจ">
+  <h2><span class="no">8</span>อ่านแบบตัวอย่าง</h2>
+  <p>น้ำเย็นจากอ่างของหอผึ่งเย็น CT-101 ไหลลงท่อ 100-CWS-101 ไปที่ปั๊ม P-101A (ทำงาน) หรือ P-101B (สำรอง)
+    ผ่านตัวกรอง STR-101 และวาล์วควบคุม TV-105 เข้าเครื่องแลกเปลี่ยนความร้อน E-101 แล้วกลับขึ้นหอผึ่งเย็นทางท่อ 100-CWR-103
+    อีกด้านของ E-101 คือวงจรน้ำของเครื่องจักร M-201 (HWS เข้า HWR กลับ)</p>
+  <table class="plain">
+    <thead><tr><th style="width:42mm">tag</th><th>คืออะไร</th><th>สังเกตในแบบ</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">P-101A / P-101B</td><td>ปั๊มทำงาน / สำรอง</td><td>มี gate valve ด้านดูด เช็ควาล์วกับ gate valve ด้านส่ง และ PI ด้านส่ง</td></tr>
+      <tr><td class="mono">STR-101 · PDI-102</td><td>ตัวกรอง Y กับเกจผลต่างความดัน</td><td>PDI ต่อคร่อมตัวกรองสองจุด บอกว่าตะแกรงตันหรือยัง</td></tr>
+      <tr><td class="mono">FT-103 → FI-103</td><td>วัดอัตราไหล แสดงบน HMI</td><td>สัญญาณไฟฟ้าเส้นประ วงกลมในสี่เหลี่ยมมีเส้นเดี่ยว = จอในห้องควบคุม</td></tr>
+      <tr><td class="mono">TT-104, TT-106</td><td>อุณหภูมิน้ำจ่าย / น้ำกลับ</td><td>แสดงบน HMI (TI-104, TI-106) ใช้ดูภาระความร้อน</td></tr>
+      <tr><td class="mono">TT-105 → TIC-105 → TY-105 → TV-105</td><td>ลูปคุมอุณหภูมิน้ำเข้าเครื่องจักร</td><td>TIC อยู่ใน PLC · TY แปลงเป็นลม (//) · TV เป็น FO เพราะขาดน้ำหล่อเย็นอันตรายกว่า · สัญญาณข้ามท่อมีช่องเว้น</td></tr>
+      <tr><td class="mono">LSL-108 → XV-109</td><td>ระดับน้ำในอ่างต่ำ สั่งเปิดวาล์วเติมน้ำ</td><td>XV-109 เป็นโซลินอยด์วาล์วบนท่อ MW · สัญญาณข้ามท่อเติมน้ำมีช่องเว้น</td></tr>
+      <tr><td class="mono">TI-107</td><td>เทอร์โมมิเตอร์หน้างาน</td><td>วงกลมเปล่า = อุปกรณ์หน้างาน ไม่ส่งสัญญาณ</td></tr>
+      <tr><td class="mono">CWR · HWS · HWR</td><td>ป้ายบอกน้ำบนท่อ</td><td>วางด้วยปลั๊กอิน ตัดท่อใต้ตัวอักษร · อธิบายไว้ใน LEGEND มุมขวาบน</td></tr>
+    </tbody>
+  </table>
+  <h3>รายการตรวจก่อนส่งแบบ</h3>
+  <ul class="check">
+    <li>อุปกรณ์ทุกตัวมี tag และชื่อ</li>
+    <li>ท่อทุกเส้นมีเลขท่อ ขนาด และทิศการไหล</li>
+    <li>จุดเปลี่ยนขนาดท่อมีข้อลดและเลขท่อใหม่</li>
+    <li>วาล์วทุกตัวอยู่บนท่อที่ตัดช่องแล้ว ไม่มีเส้นทะลุวาล์ว</li>
+    <li>วาล์วควบคุมมี tag และตำแหน่งเมื่อดับ (FO/FC)</li>
+    <li>เครื่องวัดทุกตัวมีอักษรและเลขลูป รูปทรงและเส้นตำแหน่งถูก</li>
+    <li>ทุกตัวในลูปเดียวกันใช้เลขเดียวกัน</li>
+    <li>เส้นสัญญาณถูกชนิด ไฟฟ้า ลม หรือข้อมูล</li>
+    <li>ปั๊มมีวาล์วปิดทั้งสองด้าน และเช็ควาล์วด้านส่ง</li>
+    <li>จุดสูงมี vent จุดต่ำมี drain</li>
+    <li>ท่อที่ไปแผ่นอื่นมีป้ายต่อแผ่น และแผ่นปลายทางมีป้ายคู่กัน</li>
+    <li>เส้นตัดกันเว้นช่อง เส้นต่อกันเป็นตัว T</li>
+    <li>ตัวอักษรไม่ทับเส้น อ่านได้เมื่อพิมพ์ขนาดจริง</li>
+    <li>ทุกอย่างอยู่ถูก layer (ลองปิดทีละ layer ดู)</li>
+    <li>กรอบชื่อแบบครบ เลขแบบ ชื่อ วันที่ ผู้เขียน revision</li>
+    <li>แนบ legend ไปกับชุดแบบ</li>
+  </ul>
+  <h3>ที่พลาดกันบ่อย</h3>
+  {{FIG_MISTAKES}}
+  <h3>อ้างอิงและไฟล์ต้นฉบับ</h3>
+  <p class="small">ISA-5.1 Instrumentation Symbols and Identification · ตารางสัญลักษณ์ geminivalve.com/pid-valve-symbols (ใช้เทียบรูปแบบ) ·
+    ซอร์สของไลบรารี แม่แบบ แบบตัวอย่าง และคู่มือนี้: <span class="mono">github.com/House41M5/LibreCAD</span> สาขา
+    <span class="mono">kai/thai-fonts-2216</span> โฟลเดอร์ <span class="mono">plugins/pidlines/library</span> และ <span class="mono">guide</span></p>
+</section>
