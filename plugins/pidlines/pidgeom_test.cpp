@@ -40,7 +40,8 @@ static bool sameSeg(const Seg &a, const Seg &b) {
     return true;
 }
 
-static void run(const char *name, Path orig, double spacing, double gap, int expectCuts = -1) {
+static void run(const char *name, Path orig, double spacing, const std::function<double(double)> &gapAt,
+                int expectCuts = -1) {
     std::printf("%s\n", name);
     orig.segs = simplify(orig.segs);
     {   // first placement goes through walkChain on the single uncut entity, as in the plugin
@@ -52,19 +53,27 @@ static void run(const char *name, Path orig, double spacing, double gap, int exp
         orig = c.merged;
     }
     const double L = orig.length();
-    QList<Station> st = planStations(orig, spacing, gap);
+    QList<Station> st = planStations(orig, spacing, gapAt);
     int cuts = 0;
-    for (const Station &s: st) cuts += s.cut;
+    double cutLen = 0;
+    for (const Station &s: st) {
+        cuts += s.cut;
+        if (s.cut) {
+            cutLen += s.gap;
+            CHECK(std::fabs(s.gap - gapAt(s.t)) < 1e-9, "station t=%.3f: gap %.6f, wanted %.6f there", s.t,
+                  s.gap, gapAt(s.t));
+        }
+    }
     if (expectCuts >= 0) CHECK(cuts == expectCuts, "cuts %d, expected %d", cuts, expectCuts);
 
-    const QList<QList<Seg>> pc = pieces(orig, st, gap);
+    const QList<QList<Seg>> pc = pieces(orig, st);
     double plen = 0;
     QList<Path> ents;
     for (const QList<Seg> &segs: pc) {
         ents << asEntity(segs, cuts == 0 && orig.closed);
         plen += ents.last().length();
     }
-    CHECK(std::fabs(plen - (L - cuts * gap)) < 1e-6, "pieces length %.9f, expected %.9f", plen, L - cuts * gap);
+    CHECK(std::fabs(plen - (L - cutLen)) < 1e-6, "pieces length %.9f, expected %.9f", plen, L - cutLen);
 
     // symbols: cut ones sit in a gap, the others on a piece
     QList<QPointF> ins;
@@ -77,7 +86,7 @@ static void run(const char *name, Path orig, double spacing, double gap, int exp
         double d = 1e300;
         for (const Path &e: ents) d = std::min(d, pathDist(e, pt));
         // straight distance to the piece end: half the gap on a line, the (shorter) chord on an arc
-        if (s.cut) CHECK(d <= gap / 2 + 1e-6 && d > 0.98 * gap / 2, "cut symbol at t=%.3f is %.6f from the pieces", s.t, d);
+        if (s.cut) CHECK(d <= s.gap / 2 + 1e-6 && d > 0.98 * s.gap / 2, "cut symbol at t=%.3f is %.6f from the pieces", s.t, d);
         else CHECK(d < 1e-6, "uncut symbol at t=%.3f is %.6f off the line", s.t, d);
     }
 
@@ -108,6 +117,19 @@ static void run(const char *name, Path orig, double spacing, double gap, int exp
     std::printf("  stations=%d cut=%d pieces=%d L=%.3f\n", int(st.size()), cuts, int(ents.size()), L);
 }
 
+static void run(const char *name, Path orig, double spacing, double gap, int expectCuts = -1) {
+    run(name, orig, spacing, std::function<double(double)>([gap](double) { return gap; }), expectCuts);
+}
+
+// gap_vertical as pidlines.cpp applies it: within 1° of vertical the gap is `vert`
+static std::function<double(double)> gapVertical(const Path &p, double gap, double vert) {
+    return [p, gap, vert](double t) {
+        QPointF pt; double a;
+        pathAt(p, t, &pt, &a);
+        return std::fabs(std::cos(a)) < std::sin(kPi / 180) ? vert : gap;
+    };
+}
+
 static Path line(QPointF a, QPointF b) { Path p; p.segs << lineSeg(a, b); return p; }
 static Path poly(const QList<QPair<QPointF, double>> &v, bool closed = false) {
     Path p;
@@ -129,7 +151,7 @@ static void neighbours() {
     QList<double> reach;
     for (int o = 0; o < origs.size(); ++o) {
         QList<Station> st = planStations(origs[o], 15, 1.5);
-        for (const QList<Seg> &segs: pieces(origs[o], st, 1.5)) { ents << asEntity(segs); owner << o; }
+        for (const QList<Seg> &segs: pieces(origs[o], st)) { ents << asEntity(segs); owner << o; }
         for (const Station &s: st) {
             QPointF pt; double ang;
             pathAt(origs[o], s.t, &pt, &ang);
@@ -167,6 +189,12 @@ int main() {
     { Path p = poly({{{0, 0}, 0}, {{30, 0}, -0.4}, {{60, 0}, 0.4}, {{90, 0}, 0}}); run("M S-curve polyline", p, 12, 1.5); }
     run("O circle as closed polyline (two bulge-1 arcs)", poly({{{0, 0}, 1}, {{20, 0}, 1}}, true), 15, 1.5);
     run("P circle, gap 0 (stays one closed entity)", poly({{{0, 0}, 1}, {{20, 0}, 1}}, true), 15, 0, 0);
+    // hydraulic at scale 1.5: gap 1.2 -> 1.8, gap_vertical 2.5 -> 3.75
+    { Path p = poly({{{0, 0}, 0}, {{60, 0}, 0}, {{60, 60}, 0}}); run("Q longer gap on the vertical run", p, 15, gapVertical(p, 1.8, 3.75), 8); }
+    { Path p = poly({{{0, 0}, 0}, {{24.9, 0}, 0}, {{24.9, 40}, 0}}); run("R station just past the corner, nudged back", p, 15, gapVertical(p, 1.8, 3.75), 4); }
+    { Path p = poly({{{0, 0}, 0}, {{25.5, 0}, 0}, {{25.5, 40}, 0}}); run("S station just before the corner", p, 15, gapVertical(p, 1.8, 3.75)); }
+    { Path p = poly({{{0, 40}, 0}, {{0, 0}, 0}, {{40, 0}, 0}, {{40, 40}, 0}}, true); run("T closed square, mixed gaps", p, 10, gapVertical(p, 1.8, 3.75)); }
+    run("U vertical line, gap_vertical 0 (no cut)", line({0, 0}, {0, 80}), 15, gapVertical(line({0, 0}, {0, 80}), 1.8, 0), 0);
     std::printf(failures ? "FAILED: %d\n" : "ALL PASS\n", failures);
     return failures;
 }

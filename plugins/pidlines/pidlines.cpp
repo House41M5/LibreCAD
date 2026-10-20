@@ -10,14 +10,17 @@
  * Context: P&ID signal lines (ISA-5.1: pneumatic //, capillary X, hydraulic L,
  *   data link o, ...) cannot be LibreCAD line types -- the line type list is
  *   fixed in the core and has no embedded symbols. This plugin inserts one block
- *   per symbol along the selected line/arc/polyline and cuts the line under each
- *   symbol, so the result is plain DXF that every CAD program shows the same way.
+ *   per symbol along the selected line/arc/polyline and, for patterns with a gap
+ *   (o, ◉, text), cuts the line under each symbol, so the result is plain DXF
+ *   that every CAD program shows the same way.
  * Patterns: every pid_*.dxf in <LibreCAD>/resources/pidlines and in
  *   Documents/LibreCAD/pidlines (the latter wins on the same name). The symbol
  *   is drawn around (0,0) with the line running along +X. pidlines.ini in the
  *   same folders gives each pattern a label, the gap (mm at scale 1) cut out
- *   under each symbol, a default spacing, and line=0 for patterns drawn
- *   without the line. Text patterns (--CWS--) come from make_text_patterns.py.
+ *   under each symbol, a default spacing, line=0 for patterns drawn without
+ *   the line, and how a symbol sits on steep runs (mirror_steep) and vertical
+ *   runs (upright_vertical, gap_vertical). Text patterns (--CWS--) come from
+ *   make_text_patterns.py.
  * Re-place / remove: clicking one piece of a cut line is enough. Pieces are
  *   joined back through the symbols sitting in their gaps (pidgeom.h), so the
  *   original line comes back before the new pattern is applied.
@@ -43,7 +46,6 @@
 #include <cmath>
 #include <vector>
 #include <QComboBox>
-#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -76,6 +78,8 @@ struct Pattern {
     double spacing = 0;     // default spacing in the dialog, 0 = none
     bool keepLine = true;   // false: the pattern is drawn without the line
     bool mirrorSteep = false;   // mirror on lines steeper than 45° (// never turns into \\)
+    bool uprightVertical = false;   // on vertical runs: not turned, looks as on a horizontal run
+    double gapVertical = -1;    // gap on vertical runs, mm at scale 1; -1 = same as gap
 };
 
 struct Pen {
@@ -133,6 +137,8 @@ QList<Pattern> loadPatterns() {
             if (s.contains("spacing")) p.spacing = std::max(0.0, s.value("spacing").toDouble());
             if (s.contains("line")) p.keepLine = s.value("line").toInt() != 0;
             if (s.contains("mirror_steep")) p.mirrorSteep = s.value("mirror_steep").toInt() != 0;
+            if (s.contains("upright_vertical")) p.uprightVertical = s.value("upright_vertical").toInt() != 0;
+            if (s.contains("gap_vertical")) p.gapVertical = std::max(0.0, s.value("gap_vertical").toDouble());
             s.endGroup();
         }
     }
@@ -222,6 +228,11 @@ void applyPen(Document_Interface *doc, const Pen &pen, const QList<int> &polyClo
         all.at(i)->updateData(&d);
     }
     qDeleteAll(all);
+}
+
+// within 1° of vertical, either direction
+bool isVertical(double ang) {
+    return std::fabs(std::cos(ang)) < std::sin(kPi / 180);
 }
 
 // keep letter-like symbols (L) upright: fold the angle into (-90°, 90°]
@@ -379,18 +390,28 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         }
 
         const Pattern &pt = patterns.at(pat);
-        const double gap = (dlg.cutLine() && pt.keepLine) ? pt.gap * scale : 0;
-        const QList<Station> st = planStations(ch.merged, spacing, gap);
+        const bool cut = pt.keepLine;   // whether and how much: the pattern's gap
+        const Path &path = ch.merged;
+        auto vertical = [&](double t) {
+            QPointF p; double ang;
+            pathAt(path, t, &p, &ang);
+            return isVertical(ang);
+        };
+        auto gapAt = [&](double t) {
+            if (!cut) return 0.0;
+            return (pt.gapVertical >= 0 && vertical(t) ? pt.gapVertical : pt.gap) * scale;
+        };
+        const QList<Station> st = planStations(path, spacing, gapAt);
         bool anyCut = false;
         for (const Station &s: st) {
             anyCut = anyCut || s.cut;
-            if (gap > 0 && !s.cut) ++uncut;
+            if (gapAt(s.t) > 0 && !s.cut) ++uncut;
         }
         if (!pt.keepLine) {
             removeLine();
         } else if (anyCut) {
             removeLine();
-            for (const QList<Seg> &piece: pieces(ch.merged, st, gap))
+            for (const QList<Seg> &piece: pieces(ch.merged, st))
                 added << (addSegs(doc, piece, false, asPoly) ? 0 : -1);
         } else if (hadGaps) {
             removeLine();
@@ -399,6 +420,13 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         for (const Station &s: st) {
             QPointF p; double ang;
             pathAt(ch.merged, s.t, &p, &ang);
+            if (pt.uprightVertical && isVertical(ang)) {
+                // drawn as on a horizontal line, not turned: the L's foot crosses the line
+                doc->addInsert(block, p, QPointF(scale, scale), 0);
+                added << -1;
+                ++placed;
+                continue;
+            }
             ang = upright(ang);
             // a 45° stroke on a vertical line leans \ once rotated; mirrored it leans / again
             const bool mirror = pt.mirrorSteep && std::fabs(ang) > kPi / 4 + 1e-9;
@@ -447,21 +475,20 @@ PidLinesDlg::PidLinesDlg(const QStringList &names, const QStringList &labels,
     scaleBox->setDecimals(2);
     scaleBox->setValue(s.value("scale", 1.0).toDouble());
 
-    cutBox = new QCheckBox(QString::fromUtf8("ตัดเส้นตรงสัญลักษณ์"));
-    cutBox->setChecked(s.value("cut", true).toBool());
-
+    // no "cut the line" checkbox: since 2026-10-20 each pattern's gap in
+    // pidlines.ini decides (0 = drawn over the line); a global switch only
+    // broke the patterns that need the cut (o, text)
     QFormLayout *form = new QFormLayout;
     form->addRow(QString::fromUtf8("ลาย:"), patternBox);
     form->addRow(QString::fromUtf8("ระยะห่าง:"), spacingBox);
     form->addRow(QString::fromUtf8("สเกลสัญลักษณ์:"), scaleBox);
-    form->addRow(cutBox);
 
     QLabel *hint = new QLabel(QString::fromUtf8(
         "ตกลงแล้ว: เลือกเส้นบนแบบ แล้วกด Enter (เส้นที่ตัดแล้ว คลิกท่อนเดียวพอ)\n"
         "สัญลักษณ์เดิมบนเส้นที่เลือกจะถูกแทนที่\n"
         "เพิ่มลายเอง: วาดสัญลักษณ์รอบจุด (0,0) ให้เส้นวิ่งตามแกน X\n"
         "เซฟเป็น pid_<ชื่อ>.dxf ใน Documents\\LibreCAD\\pidlines\n"
-        "ช่องที่ตัดและชื่อที่แสดง: pidlines.ini ในโฟลเดอร์เดียวกัน"));
+        "ตัดเส้นหรือไม่ (gap) และชื่อที่แสดง: pidlines.ini ในโฟลเดอร์เดียวกัน"));
     hint->setWordWrap(true);
 
     QDialogButtonBox *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -485,7 +512,6 @@ void PidLinesDlg::patternChanged()
     const bool removeOnly = i < 0;
     spacingBox->setEnabled(!removeOnly);
     scaleBox->setEnabled(!removeOnly);
-    cutBox->setEnabled(!removeOnly);
     if (removeOnly) return;
     QSettings s(QSettings::IniFormat, QSettings::UserScope, "LibreCAD", "pidlines");
     double sp = s.value("patternSpacing/" + names.at(i), 0.0).toDouble();
@@ -502,7 +528,6 @@ int PidLinesDlg::pattern() const
 
 double PidLinesDlg::spacing() const { return spacingBox->value(); }
 double PidLinesDlg::scale() const { return scaleBox->value(); }
-bool PidLinesDlg::cutLine() const { return cutBox->isChecked(); }
 
 void PidLinesDlg::saveSettings() const
 {
@@ -512,5 +537,5 @@ void PidLinesDlg::saveSettings() const
     if (pattern() >= 0)
         s.setValue("patternSpacing/" + names.at(pattern()), spacingBox->value());
     s.setValue("scale", scaleBox->value());
-    s.setValue("cut", cutBox->isChecked());
+    s.remove("cut");    // left by builds that had the checkbox
 }

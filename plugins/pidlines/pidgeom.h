@@ -12,7 +12,8 @@
 /*
  * Cut: the line is split into pieces with a gap centered on each symbol.
  *   A gap never covers a segment joint (stations are nudged off joints), so it
- *   always lies inside one straight or one arc segment.
+ *   always lies inside one straight or one arc segment. The gap length may
+ *   differ per station (gapAt), e.g. a longer gap on vertical runs.
  * Heal: two piece ends belong together when the straight or same-circle arc
  *   between them has a pid_ symbol exactly at its middle. The pieces carry no
  *   other link, so a gap is never longer than `reach`. Healing ignores piece
@@ -25,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <QList>
 #include <QPointF>
 #include <QVector>
@@ -223,12 +225,15 @@ inline QList<double> joints(const Path &p) {
 struct Station {
     double t = 0;
     bool cut = false;
+    double gap = 0;     // length cut out around t when cut
 };
 
-// Symbols centered on the path, `spacing` apart. With gap > 0 each station gets
-// cut = true when its gap fits: away from joints and path ends and with a real
-// piece left between neighbouring gaps; otherwise the symbol sits on the line.
-inline QList<Station> planStations(const Path &p, double spacing, double gap) {
+// Symbols centered on the path, `spacing` apart. gapAt(t) is the gap wanted at
+// t (0 = no cut there). A station gets cut = true when its gap fits: away from
+// joints and path ends and with a real piece left between neighbouring gaps;
+// otherwise the symbol sits on the line.
+inline QList<Station> planStations(const Path &p, double spacing,
+                                   const std::function<double(double)> &gapAt) {
     const double L = p.length();
     int n = std::max(1, int(std::floor(L / spacing + 1e-9)));
     double first = (L - (n - 1) * spacing) / 2;
@@ -238,26 +243,33 @@ inline QList<Station> planStations(const Path &p, double spacing, double gap) {
         s.t = first + k * spacing;
         st << s;
     }
-    if (gap <= 0) return st;
 
-    const double h = gap / 2, minPiece = std::max(0.05, 0.25 * gap), margin = 0.01;
+    const double margin = 0.01;
+    auto minPiece = [](double gap) { return std::max(0.05, 0.25 * gap); };
     const QList<double> J = joints(p);
     auto fits = [&](double t) {
-        if (!p.closed && (t - h < minPiece || t + h > L - minPiece)) return false;
+        const double g = gapAt(t), h = g / 2;
+        if (g <= 0) return false;
+        if (!p.closed && (t - h < minPiece(g) || t + h > L - minPiece(g))) return false;
         if (p.closed && (t - h < margin || t + h > L - margin)) return false;
         for (double j: J)
             if (j > t - h - margin && j < t + h + margin) return false;
         return true;
     };
     for (Station &s: st) {
-        if (fits(s.t)) { s.cut = true; continue; }
-        // nudge off the joint that is in the way, the shorter way first
+        const double h = gapAt(s.t) / 2;
+        if (h <= 0) continue;
+        if (fits(s.t)) { s.cut = true; s.gap = 2 * h; continue; }
+        // nudge off the joint that is in the way, the shorter way first; each
+        // side of the joint uses the gap wanted on that side
         for (double j: J) {
             if (!(j > s.t - h - margin && j < s.t + h + margin)) continue;
-            double c1 = j - h - 2 * margin, c2 = j + h + 2 * margin;
+            double c1 = j - gapAt(std::max(0.0, j - 1e-6)) / 2 - 2 * margin;
+            double c2 = j + gapAt(std::min(L, j + 1e-6)) / 2 + 2 * margin;
             if (std::fabs(c2 - s.t) < std::fabs(c1 - s.t)) std::swap(c1, c2);
             if (fits(c1)) { s.t = c1; s.cut = true; }
             else if (fits(c2)) { s.t = c2; s.cut = true; }
+            if (s.cut) s.gap = gapAt(s.t);
             break;
         }
     }
@@ -265,7 +277,8 @@ inline QList<Station> planStations(const Path &p, double spacing, double gap) {
     // sitting in a gap, or healing would lose it
     std::sort(st.begin(), st.end(), [](const Station &x, const Station &y) { return x.t < y.t; });
     auto tooClose = [&](const Station &x, const Station &y, double d) {
-        return d < (x.cut ? h : 0) + (y.cut ? h : 0) + minPiece;
+        return d < (x.cut ? x.gap / 2 : 0) + (y.cut ? y.gap / 2 : 0)
+                + minPiece(std::max(x.cut ? x.gap : 0, y.cut ? y.gap : 0));
     };
     for (int k = 1; k < st.size(); ++k) {
         if ((st[k].cut || st[k - 1].cut) && tooClose(st[k - 1], st[k], st[k].t - st[k - 1].t)) {
@@ -281,28 +294,36 @@ inline QList<Station> planStations(const Path &p, double spacing, double gap) {
     return st;
 }
 
-// visible pieces once the cut stations are taken out
-inline QList<QList<Seg>> pieces(const Path &p, const QList<Station> &st, double gap) {
-    const double h = gap / 2, L = p.length();
-    QList<double> cuts;
+// the same gap everywhere
+inline QList<Station> planStations(const Path &p, double spacing, double gap) {
+    return planStations(p, spacing, std::function<double(double)>([gap](double) { return gap; }));
+}
+
+// visible pieces once the cut stations are taken out (each with its own gap)
+inline QList<QList<Seg>> pieces(const Path &p, const QList<Station> &st) {
+    const double L = p.length();
+    QList<Station> cuts;
     for (const Station &s: st)
-        if (s.cut) cuts << s.t;
-    std::sort(cuts.begin(), cuts.end());
+        if (s.cut) cuts << s;
+    std::sort(cuts.begin(), cuts.end(), [](const Station &x, const Station &y) { return x.t < y.t; });
+    auto lo = [&](int i) { return cuts[i].t - cuts[i].gap / 2; };
+    auto hi = [&](int i) { return cuts[i].t + cuts[i].gap / 2; };
     QList<QList<Seg>> out;
     if (cuts.isEmpty()) {
         out << simplify(p.segs);
         return out;
     }
+    const int last = cuts.size() - 1;
     if (p.closed) {
-        for (int i = 0; i + 1 < cuts.size(); ++i)
-            out << simplify(subPath(p, cuts[i] + h, cuts[i + 1] - h));
+        for (int i = 0; i < last; ++i)
+            out << simplify(subPath(p, hi(i), lo(i + 1)));
         // the piece across the start vertex
-        out << simplify(subPath(p, cuts.last() + h, L) + subPath(p, 0, cuts.first() - h));
+        out << simplify(subPath(p, hi(last), L) + subPath(p, 0, lo(0)));
     } else {
-        out << simplify(subPath(p, 0, cuts.first() - h));
-        for (int i = 0; i + 1 < cuts.size(); ++i)
-            out << simplify(subPath(p, cuts[i] + h, cuts[i + 1] - h));
-        out << simplify(subPath(p, cuts.last() + h, L));
+        out << simplify(subPath(p, 0, lo(0)));
+        for (int i = 0; i < last; ++i)
+            out << simplify(subPath(p, hi(i), lo(i + 1)));
+        out << simplify(subPath(p, hi(last), L));
     }
     for (int i = out.size() - 1; i >= 0; --i)
         if (out.at(i).isEmpty()) out.removeAt(i);
