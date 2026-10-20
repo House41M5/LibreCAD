@@ -25,7 +25,11 @@
  *   - Needs the patched Doc_plugin_interface::getSelect (Kai build). Stock
  *     2.2.1.x returns false after every selection, so nothing happens.
  *   - A block already in the drawing is reused as is: editing the .dxf later
- *     does not update drawings that already contain that block.
+ *     does not update drawings that already contain that block. (pid_pneumatic
+ *     changed from 68° to 45° strokes on 2026-10-20; an older drawing keeps the
+ *     68° block and, mirrored on steep runs, leans / but steeper on horizontals.)
+ *   - mirror_steep inserts with y scale -scale. RS_Insert::update turns circles
+ *     and arcs into ellipses when x scale > y scale, so keep it to line symbols.
  *   - A line edited by hand after cutting (a piece moved or trimmed) no longer
  *     joins up; its leftover symbols have to be deleted by hand.
  *   - Plugin_Entity::updateData on a polyline resets "closed" unless CLOSEPOLY
@@ -71,6 +75,7 @@ struct Pattern {
     double gap = 0;         // line cut out under each symbol, mm at scale 1
     double spacing = 0;     // default spacing in the dialog, 0 = none
     bool keepLine = true;   // false: the pattern is drawn without the line
+    bool mirrorSteep = false;   // mirror on lines steeper than 45° (// never turns into \\)
 };
 
 struct Pen {
@@ -127,6 +132,7 @@ QList<Pattern> loadPatterns() {
             if (s.contains("gap")) p.gap = std::max(0.0, s.value("gap").toDouble());
             if (s.contains("spacing")) p.spacing = std::max(0.0, s.value("spacing").toDouble());
             if (s.contains("line")) p.keepLine = s.value("line").toInt() != 0;
+            if (s.contains("mirror_steep")) p.mirrorSteep = s.value("mirror_steep").toInt() != 0;
             s.endGroup();
         }
     }
@@ -393,7 +399,10 @@ void LC_PidLines::execComm(Document_Interface *doc, QWidget *parent, QString cmd
         for (const Station &s: st) {
             QPointF p; double ang;
             pathAt(ch.merged, s.t, &p, &ang);
-            doc->addInsert(block, p, QPointF(scale, scale), upright(ang));
+            ang = upright(ang);
+            // a 45° stroke on a vertical line leans \ once rotated; mirrored it leans / again
+            const bool mirror = pt.mirrorSteep && std::fabs(ang) > kPi / 4 + 1e-9;
+            doc->addInsert(block, p, QPointF(scale, mirror ? -scale : scale), ang);
             added << -1;
             ++placed;
         }
