@@ -24,7 +24,7 @@ import ezdxf
 
 HERE = Path(__file__).resolve().parent
 DIRS = [HERE.parent / "patterns"]
-ORDER = ["pneumatic", "hydraulic", "capillary", "datalink", "datalink_ext", "mechanical",
+ORDER = ["pneumatic", "undefined", "hydraulic", "capillary", "datalink", "datalink_ext", "mechanical",
          "em_guided", "em_unguided", "cws", "cwr", "hws", "hwr"]
 EDGE = [Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")]
@@ -160,8 +160,8 @@ for n in ORDER:
     rows.append(f'<tr><td>{sample_svg(n)}</td><td><b>{th}</b><span class="en">{en.rstrip(")") + " · " if en else ""}<span class="mono">pid_{n}</span></span></td>'
                 f'<td class="num">{gap}</td></tr>')
 dash = '<svg class="smp" viewBox="-1.6 -2 27.2 4" style="width:26mm" aria-hidden="true"><path class="dash" d="M0 0 L24 0"/></svg>'
-rows.append(f'<tr class="aside"><td>{dash}</td><td><b>สัญญาณไฟฟ้า</b><span class="en">electric</span></td>'
-            f'<td>ไม่ใช้ปลั๊กอิน<br>ชนิดเส้น <span class="mono">Dash</span></td></tr>')
+rows.append(f'<tr class="aside"><td>{dash}</td><td><b>สัญญาณไฟฟ้า</b><span class="en">electric · ไม่ใช้ปลั๊กอิน '
+            f'วาดบน layer <span class="mono">PID-SIGNAL-ELEC</span></span></td><td class="num">—</td></tr>')
 
 # spacing / gap diagram: the white data-link dot (a pattern that cuts), magnified
 DL, DS = 30.0, 12.0

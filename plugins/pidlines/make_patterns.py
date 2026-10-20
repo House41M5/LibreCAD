@@ -31,6 +31,8 @@ def save(name, draw):
 # pneumatic: -//- strokes at 45° to the line; with mirror_steep=1 in pidlines.ini a
 # vertical line shows the same // as a horizontal one (no 45° stroke turns into \\)
 save("pneumatic", lambda m, a: [m.add_line((x - 1.5, -1.5), (x + 1.5, 1.5), dxfattribs=a) for x in (-0.75, 0.75)])
+# undefined signal (type not of concern, e.g. on a PFD): -/- one 45° stroke, mirror_steep like //
+save("undefined", lambda m, a: m.add_line((-1.5, -1.5), (1.5, 1.5), dxfattribs=a))
 # capillary: -X-
 save("capillary", lambda m, a: (m.add_line((-1, -1), (1, 1), dxfattribs=a),
                                 m.add_line((-1, 1), (1, -1), dxfattribs=a)))
