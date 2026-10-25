@@ -1,5 +1,6 @@
 /*****************************************************************************/
-/*  dwgopen.h - "Open DWG..." for LibreCAD 2.2.1.6 (converts through LibreDWG) */
+/*  dwgopen.h - "Open DWG..." / "Save as DWG..." for LibreCAD 2.2.1.6        */
+/*              (converts through LibreDWG)                                  */
 /*                                                                           */
 /*  This library is free software, licensed under the terms of the GNU       */
 /*  General Public License as published by the Free Software Foundation,     */
@@ -13,8 +14,10 @@
 
 #include "qc_plugininterface.h"
 #include <QObject>
+#include <QStringList>
 
 class QMainWindow;
+class QMdiSubWindow;
 
 class LC_DwgOpen : public QObject, QC_PluginInterface
 {
@@ -33,6 +36,9 @@ private slots:
 
 private:
     void openDwg(const QString &dwg);
+    void saveAsDwg(const QString &presetTarget);
+    QString activeDxfPath(QMdiSubWindow *sub);
+    bool runRake(const QString &task, const QStringList &env, const QString &busy, QString *out);
     QMainWindow *mainWindow() const;
     bool installed = false;
 };
