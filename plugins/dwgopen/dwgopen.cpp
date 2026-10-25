@@ -12,11 +12,14 @@
 //          LibreCAD 2.2.1.6 marks AutoCAD 2018 DWG (AC1032) unsupported (libdwgr.cpp:206-208), 35 of the user's
 //          36 DWG are AC1032, and it cannot write DWG at all.
 // What:    File menu + File toolbar:
-//          "เปิด DWG…" (after Open) runs `ruby -S rake -f ~/dxf-tools/Rakefile dwg` with DWG_FILE=<file>
-//          (LibreDWG dwg2dxf + dwg2lc.py) and opens the DXF from the task's "OUT: <path>" line in a new tab.
+//          "เปิด DWG…" (after Open) runs `python -I ~/dxf-tools/dwgtask.py dwg <file>` (LibreDWG dwg2dxf +
+//          dwg2lc.py) and opens the DXF from its "OUT: <path>" line in a new tab.
 //          The DWG itself is never written; the DXF goes to Documents/LibreCAD/from-dwg/.
-//          "บันทึกเป็น DWG…" (after Save as) converts the active drawing's DXF file with `rake todwg`
-//          (DXF_FILE=, DWG_TARGET=; lc2dwg.py + LibreDWG dxf2dwg) into an AutoCAD 2000 DWG.
+//          "บันทึกเป็น DWG…" (after Save as) converts the active drawing's DXF file with
+//          `dwgtask.py todwg <dxf> <target>` (lc2dwg.py + LibreDWG dxf2dwg) into an AutoCAD 2000 DWG.
+//          Until 2026-10-25 both went through `ruby -S rake`; Smart App Control then blocked scoop's ruby
+//          (event 3077 on x64-ucrt-ruby400.dll) and both buttons died - user chose to call Python directly.
+//          rake dwg / todwg still exist and call the same dwgtask.py.
 // Why a plugin: a dll in Documents/LibreCAD/plugins needs no admin and no new LibreCAD.exe.
 //          LibreCAD only offers plugin entries that run on the open drawing (execPlug dereferences the current
 //          window, and the actions are disabled with no drawing open) - so the actions are added to the File menu
@@ -26,11 +29,15 @@
 //          (LibreCAD adds a file there on open and on save) - several or none matching -> the user is asked.
 // Recover: delete Documents/LibreCAD/plugins/dwgopen0.dll and restart LibreCAD.
 // Gotchas: LibreCAD marks a drawing modified right after opening it, so "unsaved changes" is asked, not assumed.
-//          Nothing is overwritten silently: rake dwg / rake todwg keep the old DXF / DWG as .bak-<time>.
+//          Nothing is overwritten silently: dwgtask.py keeps the old DXF / DWG as .bak-<time>.
+//          "python" on PATH can be the Microsoft Store stub in WindowsApps (opens the Store, converts nothing) -
+//          findPython skips it; PYTHON=<python.exe> in the environment overrides the search.
 //          Test hooks (environment, read once at start-up): LC_DWGOPEN_FILE=<dwg> opens that DWG;
 //          LC_DWGSAVE_TARGET=<dwg> saves the drawing opened on the command line as that DWG without any dialog.
 //          QProcess from a GUI process starts children with CREATE_NO_WINDOW, so no console flashes.
 #include "dwgopen.h"
+
+#include <algorithm>
 
 #include <QAction>
 #include <QApplication>
@@ -60,7 +67,7 @@
 
 namespace {
 
-const int kTimeoutMs = 600 * 1000;  // rake's guard.py stops LibreDWG at 300 s; the python steps take seconds
+const int kTimeoutMs = 600 * 1000;  // dwgtask.py's guard.py stops LibreDWG at 300 s; the python steps take seconds
 
 QString tr8(const char *s) { return QString::fromUtf8(s); }
 
@@ -96,15 +103,25 @@ void insertAfter(QWidget *w, QAction *after, QAction *act)
         w->addAction(act);
 }
 
-QString findRuby()
+QString findPython()
 {
-    QString r = QStandardPaths::findExecutable(QStringLiteral("ruby"));
-    if (r.isEmpty()) {
-        const QString scoop = QDir::homePath() + QStringLiteral("/scoop/apps/ruby/current/bin/ruby.exe");
-        if (QFileInfo::exists(scoop))
-            r = scoop;
+    const QString env = qEnvironmentVariable("PYTHON");
+    if (!env.isEmpty() && QFileInfo(env).isFile())
+        return env;
+    // every python.exe on PATH, not only the first: the WindowsApps stub may come first
+    for (const QString &dir : qEnvironmentVariable("PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
+        const QFileInfo fi(QDir(dir).filePath(QStringLiteral("python.exe")));
+        if (fi.isFile() && !fi.absoluteFilePath().contains(QStringLiteral("WindowsApps"), Qt::CaseInsensitive))
+            return fi.absoluteFilePath();
     }
-    return r;
+    // python.org per-user install, newest first (Python314 before Python39: by number, not by name)
+    QDir progs(QDir::homePath() + QStringLiteral("/AppData/Local/Programs/Python"));
+    QStringList dirs = progs.entryList({QStringLiteral("Python3*")}, QDir::Dirs);
+    std::sort(dirs.begin(), dirs.end(), [](const QString &a, const QString &b) { return a.mid(6).toInt() > b.mid(6).toInt(); });
+    for (const QString &d : dirs)
+        if (QFileInfo::exists(progs.filePath(d + QStringLiteral("/python.exe"))))
+            return progs.filePath(d + QStringLiteral("/python.exe"));
+    return QString();
 }
 
 QString lastLines(const QString &text, int n)
@@ -195,21 +212,20 @@ void LC_DwgOpen::install()
         QTimer::singleShot(3000, this, [this, autoSave] { saveAsDwg(autoSave); });
 }
 
-bool LC_DwgOpen::runRake(const QString &task, const QStringList &env, const QString &busy, QString *out)
+bool LC_DwgOpen::runTask(const QStringList &args, const QString &busy, QString *out)
 {
     QMainWindow *win = mainWindow();
-    const QString ruby = findRuby();
+    const QString python = findPython();
     const QString tools = QDir::homePath() + QStringLiteral("/dxf-tools");
-    if (ruby.isEmpty() || !QFileInfo::exists(tools + QStringLiteral("/Rakefile"))) {
+    const QString script = tools + QStringLiteral("/dwgtask.py");
+    if (python.isEmpty() || !QFileInfo::exists(script)) {
         QMessageBox::warning(win, name(),
-                             tr8("ต้องมี Ruby (scoop install ruby) และ %1\\Rakefile").arg(QDir::toNativeSeparators(tools)));
+                             tr8("ต้องมี Python (python.org) ที่ลง ezdxf แล้ว และ %1").arg(QDir::toNativeSeparators(script)));
         return false;
     }
 
     QProcess proc;
     QProcessEnvironment pe = QProcessEnvironment::systemEnvironment();
-    for (const QString &kv : env)
-        pe.insert(kv.section('=', 0, 0), kv.section('=', 1));
     pe.remove(QStringLiteral("LC_DWGOPEN_FILE"));
     pe.remove(QStringLiteral("LC_DWGSAVE_TARGET"));
     proc.setProcessEnvironment(pe);
@@ -233,8 +249,7 @@ bool LC_DwgOpen::runRake(const QString &task, const QStringList &env, const QStr
     });
     connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    proc.start(ruby, {QStringLiteral("-S"), QStringLiteral("rake"), QStringLiteral("-f"),
-                      tools + QStringLiteral("/Rakefile"), task});
+    proc.start(python, QStringList{QStringLiteral("-I"), script} + args);
     timeout.start(kTimeoutMs);
     if (proc.state() != QProcess::NotRunning || proc.error() != QProcess::FailedToStart)
         loop.exec();
@@ -255,7 +270,7 @@ bool LC_DwgOpen::runRake(const QString &task, const QStringList &env, const QStr
     if (timedOut || proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0 || out->isEmpty()
         || !QFileInfo::exists(*out)) {
         const QString why = timedOut ? tr8("ทำงานนานเกิน %1 วินาที — หยุดแล้ว").arg(kTimeoutMs / 1000)
-                          : proc.error() == QProcess::FailedToStart ? tr8("เรียก %1 ไม่ได้").arg(ruby)
+                          : proc.error() == QProcess::FailedToStart ? tr8("เรียก %1 ไม่ได้").arg(python)
                                                                      : tr8("แปลงไม่สำเร็จ (rc %1)").arg(proc.exitCode());
         QMessageBox::warning(win, name(), why + QStringLiteral("\n\n") + lastLines(log, 15));
         return false;
@@ -285,7 +300,7 @@ void LC_DwgOpen::openDwg(const QString &dwg)
         return;
     }
 
-    // Same place as DWG_OUT in ~/dxf-tools/Rakefile; only used to ask first - the DXF opened is the task's OUT line.
+    // Same place as DWG_OUT in ~/dxf-tools/dwgtask.py; only used to ask first - the DXF opened is the task's OUT line.
     const QString expected = QDir::homePath() + QStringLiteral("/Documents/LibreCAD/from-dwg/")
                              + src.completeBaseName() + QStringLiteral(".dxf");
     const QFileInfo old(expected);
@@ -308,7 +323,7 @@ void LC_DwgOpen::openDwg(const QString &dwg)
     }
 
     QString out;
-    if (!runRake(QStringLiteral("dwg"), {QStringLiteral("DWG_FILE=") + src.absoluteFilePath()},
+    if (!runTask({QStringLiteral("dwg"), src.absoluteFilePath()},
                  tr8("กำลังแปลง %1 …\n(ไฟล์ใหญ่ใช้ราว 15 วินาที)").arg(src.fileName()), &out))
         return;
     if (win && win->statusBar())
@@ -418,8 +433,7 @@ void LC_DwgOpen::saveAsDwg(const QString &presetTarget)
     }
 
     QString out;
-    if (!runRake(QStringLiteral("todwg"),
-                 {QStringLiteral("DXF_FILE=") + dxf, QStringLiteral("DWG_TARGET=") + QFileInfo(target).absoluteFilePath()},
+    if (!runTask({QStringLiteral("todwg"), dxf, QFileInfo(target).absoluteFilePath()},
                  tr8("กำลังบันทึก %1 เป็น DWG …").arg(QFileInfo(dxf).fileName()), &out))
         return;
     if (win->statusBar())

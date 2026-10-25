@@ -38,7 +38,7 @@ private:
     void openDwg(const QString &dwg);
     void saveAsDwg(const QString &presetTarget);
     QString activeDxfPath(QMdiSubWindow *sub);
-    bool runRake(const QString &task, const QStringList &env, const QString &busy, QString *out);
+    bool runTask(const QStringList &args, const QString &busy, QString *out);
     QMainWindow *mainWindow() const;
     bool installed = false;
 };
