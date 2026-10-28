@@ -465,6 +465,9 @@ void LC_AbstractActionWithPreview::deleteEntityUndoable(RS_Entity *entity){
  */
 void LC_AbstractActionWithPreview::highlightEntity(RS_Entity* en){
     unHighlightEntity();
+    if (en == nullptr){
+        return;
+    }
     highlightedEntity = en;
     highlightedEntity->setHighlighted(true);
     graphicView->drawEntity(highlightedEntity);
