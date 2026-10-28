@@ -195,7 +195,8 @@ int LC_LineMath::getPointPosition(const RS_Vector &startPos, const RS_Vector &en
     return BETWEEN;
 }
 /**
- * Checks whether two lines defined by their edge points lay on the same ray vector
+ * Checks whether two lines defined by their edge points lay on the same infinite line,
+ * whichever way each line points and wherever line 2 lies along line 1.
  * @param line1Start
  * @param line1End
  * @param line2Start
@@ -203,26 +204,24 @@ int LC_LineMath::getPointPosition(const RS_Vector &startPos, const RS_Vector &en
  * @return
  */
 bool LC_LineMath::areLinesOnSameRay(const RS_Vector &line1Start, const RS_Vector &line1End, const RS_Vector &line2Start, const RS_Vector &line2End){
-    // TODO: create a generic algorithm to find whether points are collinear
-    // Find the rank of the matrix formed by point homogeneous coordinates:
-    // coincidence: rank = 1
-    // collinear:   rank = 2
-    // coplanar:    rank = 3
-    double angle1 = line1Start.angleTo(line1End);
-    double angle2 = line1Start.angleTo(line2End);
-    double angle3 = line1Start.angleTo(line2Start);
-
-    // if all points are on the same ray, the angles from first point to remaining 3 points will be the same
-
-    angle1 = RS_Math::correctAngleU(angle1);
-    angle2 = RS_Math::correctAngleU(angle2);
-    angle3 = RS_Math::correctAngleU(angle3);
-
-    bool sameLine = false;
-    if (std::abs(angle1 - angle2) < RS_TOLERANCE_ANGLE && std::abs(angle1 - angle3) < RS_TOLERANCE_ANGLE){
-        sameLine = true;
+    // Comparing the angles from line1Start to the other points only accepted line 2 lying ahead of line1Start,
+    // so Line Join refused collinear lines pointing away from each other, or line 2 behind line 1's start
+    // ("Lines are parallel, can't merge", 2026-10-28). Measure each point's offset from line 1 instead.
+    const RS_Vector direction = line1End - line1Start;
+    const double length = direction.magnitude();
+    if (length < RS_TOLERANCE){
+        return false;
     }
-    return sameLine;
+    for (const RS_Vector &point: {line2Start, line2End}) {
+        const RS_Vector toPoint = point - line1Start;
+        const double offset = std::abs(direction.x * toPoint.y - direction.y * toPoint.x) / length;
+        // same angular tolerance as before, taken over the larger of line 1 and the distance to the point
+        const double distance = toPoint.magnitude();
+        if (offset >= RS_TOLERANCE_ANGLE * (distance > length ? distance : length)){
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
