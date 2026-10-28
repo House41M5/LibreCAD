@@ -30,6 +30,7 @@
 
 #include "rs_debug.h"
 #include "rs_document.h"
+#include "rs_graphic.h"
 #include "rs_graphicview.h"
 #include "rs_image.h"
 #include "rs_line.h"
@@ -40,13 +41,16 @@
 
 namespace
 {
-// Return the file path name to use relative to the dxf file folder
-QString imageRelativePathName(QString& imageFile)
+// Return the file path name to use relative to the folder of the image's drawing.
+// The drawing, not the application window: dxf2pdf/dxf2png have no window, and
+// creating one here crashed them at exit (as upstream master does, 2026-10-28).
+QString imageRelativePathName(const RS_Entity& image, QString& imageFile)
 {
-    auto* doc = QC_ApplicationWindow::getAppWindow()->getDocument();
-    if (doc == nullptr || imageFile.isEmpty())
+    const RS_Graphic* graphic = image.getGraphic();
+    const QString documentFileName = graphic != nullptr ? graphic->getFilename() : QString();
+    if (documentFileName.isEmpty() || imageFile.isEmpty())
         return imageFile;
-    QFileInfo dxfFileInfo(doc->getFilename());
+    QFileInfo dxfFileInfo(documentFileName);
     QFileInfo fileInfo(imageFile);
     // file exists as input file path
     if (fileInfo.exists()) {
@@ -124,7 +128,7 @@ void RS_Image::update() {
     RS_DEBUG->print("RS_Image::update");
 
     // the whole image:
-    QString filePathName = imageRelativePathName(data.file);
+    QString filePathName = imageRelativePathName(*this, data.file);
 
     //QImage image = QImage(data.file);
     img = std::make_shared<QImage>(filePathName);
