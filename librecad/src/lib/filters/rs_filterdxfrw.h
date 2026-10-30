@@ -89,7 +89,7 @@ public:
      void addLayer(const DRW_Layer& data) override;
      void addDimStyle(const DRW_Dimstyle& data) override;
      void addVport(const DRW_Vport& data) override;
-     void addTextStyle(const DRW_Textstyle& /*data*/) override{}
+     void addTextStyle(const DRW_Textstyle& data) override;
      void addAppId(const DRW_AppId& /*data*/) override{}
      void addBlock(const DRW_Block& data) override;
      void setBlock(const int handle) override;
@@ -237,6 +237,8 @@ private:
     QHash<int, RS_EntityContainer*> blockHash;
     /** Pointer to entity container to store possible orphan entities like paper space */
     RS_EntityContainer* dummyContainer;
+    /** STYLE table by handle while importing: complex linetype elements point at it (resolved after reading) */
+    QHash<unsigned, RS_Graphic::DxfLineTypeElement> fileTextStyles;
 };
 
 #endif

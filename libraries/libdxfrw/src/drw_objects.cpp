@@ -451,6 +451,7 @@ bool DRW_LType::parseCode(int code, dxfReader *reader){
     case 73:
         size = reader->getInt32();
         path.clear();
+        elements.clear();
         if (!DRW::reserve( path, size)) {
             return false;
         }
@@ -460,11 +461,34 @@ bool DRW_LType::parseCode(int code, dxfReader *reader){
         break;
     case 49:
         path.push_back(reader->getDouble());
+        elements.emplace_back();
         pathIdx++;
         break;
-/*    case 74:
-        haveShape = reader->getInt32();
-        break;*/
+    // complex linetype: what is drawn after the dash just read
+    case 74:
+        if (!elements.empty()) elements.back().flags = reader->getInt32();
+        break;
+    case 75:
+        if (!elements.empty()) elements.back().shape = reader->getInt32();
+        break;
+    case 340:
+        if (!elements.empty()) elements.back().styleHandle = reader->getHandleString();
+        break;
+    case 46:
+        if (!elements.empty()) elements.back().scale = reader->getDouble();
+        break;
+    case 50:
+        if (!elements.empty()) elements.back().rotation = reader->getDouble();
+        break;
+    case 44:
+        if (!elements.empty()) elements.back().x = reader->getDouble();
+        break;
+    case 45:
+        if (!elements.empty()) elements.back().y = reader->getDouble();
+        break;
+    case 9:
+        if (!elements.empty()) elements.back().text = reader->getUtf8String();
+        break;
     default:
         return DRW_TableEntry::parseCode(code, reader);
     }

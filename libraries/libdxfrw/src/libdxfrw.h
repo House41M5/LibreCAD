@@ -154,6 +154,11 @@ private:
     int elParts;  /*!< parts number when convert ellipse to polyline */
     std::unordered_map<std::string,int> blockMap;
     std::unordered_map<std::string,int> textStyleMap;
+    //! STYLEs that complex linetypes point at: LTYPE is written before STYLE, so the handle is taken there
+    struct LtStyle { int handle; bool written; DRW_Textstyle style; };
+    std::vector<LtStyle> ltStyles;
+    int ltStyleHandle(const DRW_LType::Element &el);
+    int takeLtStyleHandle(const DRW_Textstyle &ent);
     std::vector<DRW_ImageDef*> imageDef;  /*!< imageDef list */
 
     int currHandle;

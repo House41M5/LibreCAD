@@ -146,6 +146,8 @@ QString RS_FilterDXFRW::lastError() const
  * will be created or the graphics from which the entities are
  * taken to be stored in a file.
  */
+static void resolveLineTypeStyles(RS_Graphic* graphic, const QHash<unsigned, RS_Graphic::DxfLineTypeElement>& styles);
+
 bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, RS2::FormatType type) {
     RS_DEBUG->print("RS_FilterDXFRW::fileImport");
 
@@ -164,6 +166,7 @@ bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, RS2::FormatT
     dimStyle = "Standard";
     codePage = "ANSI_1252";
     textStyle = "Standard";
+    fileTextStyles.clear();
     //reset library version
     isLibDxfRw = false;
     libDxfRwVersion = 0;
@@ -208,6 +211,8 @@ bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, RS2::FormatT
 #endif
 
     delete dummyContainer;
+    resolveLineTypeStyles(graphic, fileTextStyles);
+    fileTextStyles.clear();
     /*set current layer */
     RS_Layer* cl = graphic->findLayer(graphic->getVariableString("$CLAYER", "0"));
 	if (cl ){
@@ -236,7 +241,59 @@ void RS_FilterDXFRW::addLType(const DRW_LType& data) {
         return;
     lt.description = QString::fromUtf8(data.desc.c_str());
     lt.pattern = data.path;
+    bool complex = false;
+    for (const DRW_LType::Element& e: data.elements)
+        complex = complex || (e.flags & 6) != 0;
+    if (complex) {
+        for (const DRW_LType::Element& e: data.elements) {
+            RS_Graphic::DxfLineTypeElement el;
+            el.flags = e.flags;
+            el.shape = e.shape;
+            el.scale = e.scale;
+            el.rotation = e.rotation;
+            el.x = e.x;
+            el.y = e.y;
+            el.text = QString::fromUtf8(e.text.c_str());
+            el.styleHandle = e.styleHandle;
+            lt.elements.push_back(el);
+        }
+    }
     graphic->addDxfLineType(lt);
+}
+
+/** keeps the STYLE table for the shapes/text of complex linetypes (LibreCAD's own text styles are font names) */
+void RS_FilterDXFRW::addTextStyle(const DRW_Textstyle& data) {
+    RS_Graphic::DxfLineTypeElement st;
+    st.styleName = QString::fromUtf8(data.name.c_str());
+    st.styleFont = QString::fromUtf8(data.font.c_str());
+    st.styleBigFont = QString::fromUtf8(data.bigFont.c_str());
+    st.styleFlags = data.flags;
+    st.styleHeight = data.height;
+    st.styleWidth = data.width;
+    st.styleOblique = data.oblique;
+    fileTextStyles.insert(data.handle, st);
+}
+
+/** after reading: complex linetype elements take the STYLE their 340 points at (STYLE follows LTYPE in a file) */
+static void resolveLineTypeStyles(RS_Graphic* graphic, const QHash<unsigned, RS_Graphic::DxfLineTypeElement>& styles) {
+    const std::vector<RS_Graphic::DxfLineType> lts = graphic->getDxfLineTypes();
+    for (RS_Graphic::DxfLineType lt: lts) {
+        if (lt.elements.empty())
+            continue;
+        for (RS_Graphic::DxfLineTypeElement& el: lt.elements) {
+            auto it = styles.constFind(el.styleHandle);
+            if ((el.flags & 6) == 0 || it == styles.constEnd())
+                continue;
+            el.styleName = it->styleName;
+            el.styleFont = it->styleFont;
+            el.styleBigFont = it->styleBigFont;
+            el.styleFlags = it->styleFlags;
+            el.styleHeight = it->styleHeight;
+            el.styleWidth = it->styleWidth;
+            el.styleOblique = it->styleOblique;
+        }
+        graphic->addDxfLineType(lt);    // replaces the entry of that name
+    }
 }
 
 /** linetype name to write for a pen: the file's own name while its LTYPE is kept, else the built-in name */
@@ -2013,6 +2070,24 @@ void RS_FilterDXFRW::writeLTypes(){
         ltype.name = lt.name.toUtf8().toStdString();
         ltype.desc = lt.description.toUtf8().toStdString();
         ltype.path = lt.pattern;
+        for (const RS_Graphic::DxfLineTypeElement& el: lt.elements) {
+            DRW_LType::Element e;
+            e.flags = el.flags;
+            e.shape = el.shape;
+            e.scale = el.scale;
+            e.rotation = el.rotation;
+            e.x = el.x;
+            e.y = el.y;
+            e.text = el.text.toUtf8().toStdString();
+            e.styleName = el.styleName.toUtf8().toStdString();
+            e.styleFont = el.styleFont.toUtf8().toStdString();
+            e.styleBigFont = el.styleBigFont.toUtf8().toStdString();
+            e.styleFlags = el.styleFlags;
+            e.styleHeight = el.styleHeight;
+            e.styleWidth = el.styleWidth;
+            e.styleOblique = el.styleOblique;
+            ltype.elements.push_back(e);
+        }
         dxfW->writeLineType(&ltype);
     }
 }

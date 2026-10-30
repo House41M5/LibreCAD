@@ -128,6 +128,7 @@ bool dxfRW::write(DRW_Interface *interface_, DRW::Version ver, bool bin){
     iface->writeHeader(header);
     writer->writeString(0, "SECTION");
     entCount =FIRSTHANDLE;
+    ltStyles.clear();
     header.write(writer, version);
     writer->writeString(0, "ENDSEC");
     if (ver > DRW::AC1009) {
@@ -270,10 +271,65 @@ bool dxfRW::writeLineType(DRW_LType *ent){
     for (unsigned int i = 0;  i< ent->path.size(); i++){
         writer->writeDouble(49, ent->path.at(i));
         if (version > DRW::AC1009) {
-            writer->writeInt16(74, 0);
+            // complex linetype: the shape/text after this dash, if its STYLE is known
+            const DRW_LType::Element *el = i < ent->elements.size() ? &ent->elements[i] : nullptr;
+            if (el != nullptr && (el->flags & 6) != 0 && !el->styleFont.empty()) {
+                writer->writeInt16(74, el->flags);
+                writer->writeInt16(75, el->shape);
+                writer->writeString(340, toHexStr(ltStyleHandle(*el)));
+                writer->writeDouble(46, el->scale);
+                writer->writeDouble(50, el->rotation);
+                writer->writeDouble(44, el->x);
+                writer->writeDouble(45, el->y);
+                if (el->flags & 2) {
+                    writer->writeUtf8String(9, el->text);
+                }
+            } else {
+                writer->writeInt16(74, 0);
+            }
         }
     }
     return true;
+}
+
+static std::string upperStr(std::string s) {
+    transform(s.begin(), s.end(), s.begin(), ::toupper);
+    return s;
+}
+
+/** handle of the STYLE a complex linetype element is drawn with: LTYPE is written before STYLE, so it is taken here */
+int dxfRW::ltStyleHandle(const DRW_LType::Element &el) {
+    const std::string name = upperStr(el.styleName), font = upperStr(el.styleFont);
+    for (const LtStyle &s: ltStyles) {
+        if (upperStr(s.style.name) == name && upperStr(s.style.font) == font)
+            return s.handle;
+    }
+    LtStyle s{++entCount, false, DRW_Textstyle()};
+    s.style.name = el.styleName;     // empty for a shape file (ltypeshp.shx), as AutoCAD writes it
+    s.style.font = el.styleFont;
+    s.style.bigFont = el.styleBigFont;
+    s.style.flags = el.styleFlags;
+    s.style.height = el.styleHeight;
+    s.style.width = el.styleWidth;
+    s.style.oblique = el.styleOblique;
+    ltStyles.push_back(s);
+    return s.handle;
+}
+
+/** a STYLE being written that a complex linetype points at gets the handle taken for it (0 = none): same name and
+ *  font, else the same (non-empty) name, as the table holds a name once */
+int dxfRW::takeLtStyleHandle(const DRW_Textstyle &ent) {
+    const std::string name = upperStr(ent.name), font = upperStr(ent.font);
+    for (int byName = 0; byName < 2; ++byName) {
+        for (LtStyle &s: ltStyles) {
+            if (!s.written && upperStr(s.style.name) == name
+                    && (byName ? !name.empty() : upperStr(s.style.font) == font)) {
+                s.written = true;
+                return s.handle;
+            }
+        }
+    }
+    return 0;
 }
 
 bool dxfRW::writeLayer(DRW_Layer *ent){
@@ -329,8 +385,10 @@ bool dxfRW::writeTextstyle(DRW_Textstyle *ent){
         }
     }
     if (version > DRW::AC1009) {
-        writer->writeString(5, toHexStr(++entCount));
-        textStyleMap[name] = entCount;
+        int handle = takeLtStyleHandle(*ent);
+        if (handle == 0) handle = ++entCount;
+        writer->writeString(5, toHexStr(handle));
+        textStyleMap[name] = handle;
     }
 
     if (version > DRW::AC1012) {
@@ -1543,6 +1601,13 @@ bool dxfRW::writeTables() {
     writer->writeInt16(70, 3); //end table def
     dimstyleStd =false;
     iface->writeTextstyles();
+    // STYLEs complex linetypes point at that the application did not write itself
+    for (size_t i = 0; i < ltStyles.size(); ++i) {
+        if (!ltStyles[i].written) {
+            DRW_Textstyle ts = ltStyles[i].style;
+            writeTextstyle(&ts);
+        }
+    }
     if (!dimstyleStd) {
         DRW_Textstyle tsty;
         tsty.name = "Standard";

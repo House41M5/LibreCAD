@@ -251,8 +251,26 @@ public:
         size = 0;
         length = 0.0;
         pathIdx = 0;
+        elements.clear();
         DRW_TableEntry::reset();
     }
+
+    //! Shape or text drawn after a dash of a complex linetype, codes 74 75 340 46 50 44 45 9
+    struct Element {
+        int flags = 0;              /*!< 74: 2 text, 4 shape, 1 absolute rotation; 0 none */
+        int shape = 0;              /*!< 75: shape number, 0 for text */
+        duint32 styleHandle = 0;    /*!< 340 as read (the STYLE table follows LTYPE) */
+        double scale = 1.0;         /*!< 46 */
+        double rotation = 0.0;      /*!< 50 */
+        double x = 0.0;             /*!< 44 */
+        double y = 0.0;             /*!< 45 */
+        UTF8STRING text;            /*!< 9 */
+        //! STYLE it is drawn with, set by the application before writing; empty font = written as a plain gap.
+        //! dxfRW points 340 at it and writes it after the application's STYLEs unless one of them has its name.
+        UTF8STRING styleName, styleFont, styleBigFont;
+        int styleFlags = 0;
+        double styleHeight = 0.0, styleWidth = 1.0, styleOblique = 0.0;
+    };
 
 protected:
     bool parseCode(int code, dxfReader *reader) override;
@@ -266,6 +284,7 @@ public:
     double length;            /*!< total length of pattern, code 40 */
 //    int haveShape;      /*!< complex linetype type, code 74 */
     std::vector<double> path;  /*!< trace, point or space length sequence, code 49 */
+    std::vector<Element> elements;  /*!< one per path entry as read (flags 0 = none); may be shorter than path */
 private:
     int pathIdx;
 };

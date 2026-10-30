@@ -342,12 +342,24 @@ public:
 
     /**
      * LTYPE table entries read from a DXF/DWG file: drawn in drawing units and written back as read
-     * (see RS_Pen::getLineTypeName). Shape/text elements of complex linetypes are kept as their gaps.
+     * (see RS_Pen::getLineTypeName). Shape/text elements of complex linetypes are drawn as their gaps but kept
+     * with the STYLE they use, so they are written back.
      */
+    struct DxfLineTypeElement {
+        int flags = 0;                  // 74: 2 text, 4 shape, 1 absolute rotation; 0 none
+        int shape = 0;                  // 75
+        double scale = 1., rotation = 0., x = 0., y = 0.;   // 46 50 44 45
+        QString text;                   // 9
+        unsigned styleHandle = 0;       // 340 as read: the STYLE table comes after LTYPE in the file
+        QString styleName, styleFont, styleBigFont;     // the STYLE itself; empty font = not found, saved as a gap
+        int styleFlags = 0;
+        double styleHeight = 0., styleWidth = 1., styleOblique = 0.;
+    };
     struct DxfLineType {
         QString name;
         QString description;
         std::vector<double> pattern;    // DXF group 49: + dash, - gap, 0 dot
+        std::vector<DxfLineTypeElement> elements;   // one per pattern entry, or empty: none complex
     };
     void addDxfLineType(const DxfLineType& lt);
     const DxfLineType* findDxfLineType(const QString& name) const;
