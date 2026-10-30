@@ -28,6 +28,9 @@
 #ifndef RS_PEN_H
 #define RS_PEN_H
 
+#include <QString>
+#include <QVector>
+
 #include "rs.h"
 #include "rs_color.h"
 #include "rs_flags.h"
@@ -85,6 +88,34 @@ public:
     }
     void setLineType(RS2::LineType t) {
         lineType = t;
+        lineTypeName.clear();
+        screenPattern.clear();
+    }
+    /**
+     * DXF linetype name as read from a file (e.g. "HIDDEN", "WATERLINE"). While set (and the
+     * graphic has that LTYPE), the entity is drawn with the file's pattern in drawing units
+     * x $LTSCALE x getLineTypeScale(), like AutoCAD, instead of the built-in screen-size
+     * pattern of getLineType(). setLineType() clears it.
+     */
+    const QString& getLineTypeName() const {
+        return lineTypeName;
+    }
+    void setLineTypeName(const QString& name) {
+        lineTypeName = name;
+    }
+    /** entity linetype scale, DXF group 48 */
+    double getLineTypeScale() const {
+        return lineTypeScale;
+    }
+    void setLineTypeScale(double s) {
+        lineTypeScale = s;
+    }
+    /** dash/gap lengths in device pixels for this draw (set by RS_GraphicView::setPenForEntity) */
+    const QVector<double>& getScreenPattern() const {
+        return screenPattern;
+    }
+    void setScreenPattern(const QVector<double>& p) {
+        screenPattern = p;
     }
     RS2::LineWidth getWidth() const {
         return width;
@@ -153,6 +184,9 @@ protected:
     RS_Color color{};
     double alpha = 1.;
     double m_dashOffset = 0.;
+    QString lineTypeName;
+    double lineTypeScale = 1.;
+    QVector<double> screenPattern;
 };
 
 #endif

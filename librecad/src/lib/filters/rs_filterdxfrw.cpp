@@ -223,6 +223,39 @@ bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, RS2::FormatT
 }
 
 /**
+ * Keeps the file's linetype definitions: entities are drawn with them in drawing units (like
+ * AutoCAD) and they are written back on save instead of LibreCAD's built-in screen patterns.
+ */
+void RS_FilterDXFRW::addLType(const DRW_LType& data) {
+    if (graphic == nullptr)
+        return;
+    RS_Graphic::DxfLineType lt;
+    lt.name = QString::fromUtf8(data.name.c_str());
+    const QString upper = lt.name.toUpper();
+    if (upper.isEmpty() || upper == "BYLAYER" || upper == "BYBLOCK")
+        return;
+    lt.description = QString::fromUtf8(data.desc.c_str());
+    lt.pattern = data.path;
+    graphic->addDxfLineType(lt);
+}
+
+/** linetype name to write for a pen: the file's own name while its LTYPE is kept, else the built-in name */
+static std::string penLineTypeName(const RS_Pen& pen, const RS_Graphic* graphic) {
+    const QString& name = pen.getLineTypeName();
+    if (!name.isEmpty() && graphic != nullptr && graphic->findDxfLineType(name) != nullptr)
+        return name.toUtf8().toStdString();
+    return RS_FilterDXFRW::lineTypeToName(pen.getLineType()).toUtf8().toStdString();
+}
+
+/** pen linetype from a DXF name, keeping the name when it is a real linetype (not ByLayer/ByBlock) */
+static void setPenLineType(RS_Pen& pen, const QString& name) {
+    pen.setLineType(RS_FilterDXFRW::nameToLineType(name));
+    const QString upper = name.toUpper();
+    if (!upper.isEmpty() && upper != "BYLAYER" && upper != "BYBLOCK")
+        pen.setLineTypeName(name);
+}
+
+/**
  * Implementation of the method which handles layers.
  */
 void RS_FilterDXFRW::addLayer(const DRW_Layer &data) {
@@ -1696,14 +1729,19 @@ void RS_FilterDXFRW::writeHeader(DRW_Header& data){
 
 void RS_FilterDXFRW::writeLTypes(){
     DRW_LType ltype;
+    // a linetype the file defined itself is written below as read, not with the built-in pattern
+    auto putBuiltIn = [this](DRW_LType* lt) {
+        if (graphic == nullptr || graphic->findDxfLineType(QString::fromUtf8(lt->name.c_str())) == nullptr)
+            dxfW->writeLineType(lt);
+    };
     // Standard linetypes for LibreCAD / AutoCAD
     ltype.name = "CONTINUOUS";
     ltype.desc = "Solid line";
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
     ltype.name = "ByLayer";
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
     ltype.name = "ByBlock";
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.name = "DOT";
     ltype.desc = "Dot . . . . . . . . . . . . . . . . . . . . . .";
@@ -1711,7 +1749,7 @@ void RS_FilterDXFRW::writeLTypes(){
 	ltype.length = 6.35;
     ltype.path.push_back(0.0);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DOTTINY";
@@ -1720,7 +1758,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 0.9525;
     ltype.path.push_back(0.0);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DOT2";
@@ -1729,7 +1767,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 3.175;
     ltype.path.push_back(0.0);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DOTX2";
@@ -1738,7 +1776,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 12.7;
     ltype.path.push_back(0.0);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHED";
@@ -1747,7 +1785,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 19.05;
     ltype.path.push_back(12.7);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHEDTINY";
@@ -1756,7 +1794,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 2.8575;
     ltype.path.push_back(1.905);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHED2";
@@ -1765,7 +1803,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 9.525;
     ltype.path.push_back(6.35);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHEDX2";
@@ -1774,7 +1812,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.length = 38.1;
     ltype.path.push_back(25.4);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHDOT";
@@ -1785,7 +1823,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-6.35);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHDOTTINY";
@@ -1796,7 +1834,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-0.9525);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHDOT2";
@@ -1807,7 +1845,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-3.175);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DASHDOTX2";
@@ -1818,7 +1856,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-12.7);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DIVIDE";
@@ -1831,7 +1869,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-6.35);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DIVIDETINY";
@@ -1844,7 +1882,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-0.9525);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DIVIDE2";
@@ -1857,7 +1895,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-3.175);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "DIVIDEX2";
@@ -1870,7 +1908,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-12.7);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "BORDER";
@@ -1883,7 +1921,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-6.35);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "BORDERTINY";
@@ -1896,7 +1934,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-0.9525);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "BORDER2";
@@ -1909,7 +1947,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-3.175);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "BORDERX2";
@@ -1922,7 +1960,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-12.7);
     ltype.path.push_back(0.0);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "CENTER";
@@ -1933,7 +1971,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-6.35);
     ltype.path.push_back(6.35);
     ltype.path.push_back(-6.35);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "CENTERTINY";
@@ -1944,7 +1982,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-0.9525);
     ltype.path.push_back(0.9525);
     ltype.path.push_back(-0.9525);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "CENTER2";
@@ -1955,7 +1993,7 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-3.175);
     ltype.path.push_back(3.175);
     ltype.path.push_back(-3.175);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
 
     ltype.path.clear();
     ltype.name = "CENTERX2";
@@ -1966,7 +2004,17 @@ void RS_FilterDXFRW::writeLTypes(){
     ltype.path.push_back(-12.7);
     ltype.path.push_back(12.7);
     ltype.path.push_back(-12.7);
-    dxfW->writeLineType(&ltype);
+    putBuiltIn(&ltype);
+
+    if (graphic == nullptr)
+        return;
+    for (const RS_Graphic::DxfLineType& lt: graphic->getDxfLineTypes()) {
+        ltype.reset();
+        ltype.name = lt.name.toUtf8().toStdString();
+        ltype.desc = lt.description.toUtf8().toStdString();
+        ltype.path = lt.pattern;
+        dxfW->writeLineType(&ltype);
+    }
 }
 
 void RS_FilterDXFRW::writeLayers(){
@@ -1981,7 +2029,7 @@ void RS_FilterDXFRW::writeLayers(){
         lay.color = colorToNumber(pen.getColor(), &exact_rgb);
         lay.color24 = exact_rgb;
         lay.lWeight = widthToNumber(pen.getWidth());
-        lay.lineType = lineTypeToName(pen.getLineType()).toStdString();
+        lay.lineType = penLineTypeName(pen, graphic);
         lay.flags = l->isFrozen() ? 0x01 : 0x00;
         if (l->isLocked()) lay.flags |=0x04;
         lay.plotF = l->isPrint();
@@ -3168,7 +3216,8 @@ void RS_FilterDXFRW::setEntityAttributes(RS_Entity* entity,
     pen.setColor(numberToColor(attrib->color));
 
     // Linetype:
-    pen.setLineType(nameToLineType( QString::fromUtf8(attrib->lineType.c_str()) ));
+    setPenLineType(pen, QString::fromUtf8(attrib->lineType.c_str()));
+    pen.setLineTypeScale(attrib->ltypeScale);
 
     // Width:
     pen.setWidth(numberToWidth(attrib->lWeight));
@@ -3202,9 +3251,6 @@ void RS_FilterDXFRW::getEntityAttributes(DRW_Entity* ent, const RS_Entity* entit
     int color = colorToNumber(pen.getColor(), &exact_rgb);
     //printf("Color is: %s -> %d\n", pen.getColor().name().toLatin1().data(), color);
 
-    // Linetype:
-    QString lineType = lineTypeToName(pen.getLineType());
-
     // Width:
     DRW_LW_Conv::lineWidth width = widthToNumber(pen.getWidth());
 
@@ -3212,7 +3258,8 @@ void RS_FilterDXFRW::getEntityAttributes(DRW_Entity* ent, const RS_Entity* entit
     ent->color = color;
     ent->color24 = exact_rgb;
     ent->lWeight = width;
-    ent->lineType = lineType.toUtf8().data();
+    ent->lineType = penLineTypeName(pen, graphic);
+    ent->ltypeScale = pen.getLineTypeScale();
     // Layer freeze must not become entity invisibility (DXF group 60).
     ent->visible = entity->getFlag(RS2::FlagVisible);
 }
@@ -3232,8 +3279,8 @@ RS_Pen RS_FilterDXFRW::attributesToPen(const DRW_Layer* att) const {
     else
         col = numberToColor(att->color);
 
-    RS_Pen pen(col, numberToWidth(att->lWeight),
-               nameToLineType(QString::fromUtf8(att->lineType.c_str())) );
+    RS_Pen pen(col, numberToWidth(att->lWeight), RS2::SolidLine);
+    setPenLineType(pen, QString::fromUtf8(att->lineType.c_str()));
     return pen;
 }
 

@@ -85,7 +85,7 @@ public:
 
     // Methods from DRW_CreationInterface:
      void addHeader(const DRW_Header* data) override;
-     void addLType(const DRW_LType& /*data*/) override{}
+     void addLType(const DRW_LType& data) override;
      void addLayer(const DRW_Layer& data) override;
      void addDimStyle(const DRW_Dimstyle& data) override;
      void addVport(const DRW_Vport& data) override;

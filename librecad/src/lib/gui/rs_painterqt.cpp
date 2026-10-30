@@ -60,6 +60,17 @@ QVector<qreal> rsToQDashPattern(RS2::LineType t, double screenWidth, double dpmm
     return dashPattern;
 }
 
+// A DXF linetype's dashes in device pixels (RS_GraphicView::setPenForEntity) to QPen units of pen width
+void setScreenDashPattern(QPen& qPen, const RS_Pen& rsPen)
+{
+    const double w = std::max(qPen.widthF(), 1.);
+    QVector<qreal> dashes;
+    for (double d: rsPen.getScreenPattern())
+        dashes << d / w;
+    qPen.setDashPattern(dashes);
+    qPen.setDashOffset(rsPen.dashOffset() / w);
+}
+
 /**
  * Wrapper for Qt
  * convert RS2::LineType to Qt::PenStyle
@@ -229,10 +240,17 @@ public:
         // set pen
         RS_Pen& rsPen = painter.getRsPen();
         const Qt::PenStyle styleToUse = rsToQtLineType(rsPen.getLineType());
+        const bool screenDashes = !rsPen.getScreenPattern().isEmpty();
         QPen qPen = painter.pen();
         if (rsPen.getLineType() == RS2::NoPen)
         {
             qPen.setStyle(Qt::NoPen);
+        } else if (screenDashes)
+        {
+            qPen.setColor(rsPen.getColor());
+            setScreenDashPattern(qPen, rsPen);
+            qPen.setJoinStyle(Qt::RoundJoin);
+            qPen.setCapStyle(Qt::RoundCap);
         } else if (styleToUse == Qt::CustomDashLine)
         {
             qPen.setStyle(Qt::CustomDashLine);
@@ -258,7 +276,7 @@ public:
         // setPen() already configured solid pens.  Reapplying a copied
         // cosmetic pen makes Qt 5.15.2's PDF engine turn hairlines into
         // sub-pixel filled outlines instead of PDF 0-width strokes.
-        if (rsPen.getLineType() == RS2::NoPen
+        if (rsPen.getLineType() == RS2::NoPen || screenDashes
             || styleToUse == Qt::CustomDashLine) {
             painter.QPainter::setPen(qPen);
         }
@@ -926,7 +944,10 @@ void RS_PainterQt::setPen(const RS_Pen& pen) {
     pColor.setAlphaF(pen.getAlpha());
     QPen p(pColor, RS_Math::round(lpen.getScreenWidth()),
            rsToQtLineType(lpen.getLineType()));
-    if (p.style() == Qt::CustomDashLine)
+    if (!lpen.getScreenPattern().isEmpty())
+    {
+        setScreenDashPattern(p, lpen);
+    } else if (p.style() == Qt::CustomDashLine)
     {
         auto dashPattern = rsToQDashPattern(lpen.getLineType(),
                                             p.widthF(),

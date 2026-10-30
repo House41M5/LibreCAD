@@ -900,6 +900,24 @@ void RS_Graphic::setPaperFormat(RS2::PaperFormat f, bool landscape) {
 
 
 
+void RS_Graphic::addDxfLineType(const DxfLineType& lt) {
+    const QString key = lt.name.toUpper();
+    auto it = dxfLineTypeIndex.constFind(key);
+    if (it != dxfLineTypeIndex.constEnd()) {
+        dxfLineTypes[it.value()] = lt;
+        return;
+    }
+    dxfLineTypeIndex.insert(key, dxfLineTypes.size());
+    dxfLineTypes.push_back(lt);
+}
+
+const RS_Graphic::DxfLineType* RS_Graphic::findDxfLineType(const QString& name) const {
+    auto it = dxfLineTypeIndex.constFind(name.toUpper());
+    return it == dxfLineTypeIndex.constEnd() ? nullptr : &dxfLineTypes[it.value()];
+}
+
+
+
 /**
  * @return Paper space scaling (DXF: $PSVPSCALE).
  */

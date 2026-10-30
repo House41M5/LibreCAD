@@ -29,7 +29,9 @@
 #ifndef RS_GRAPHIC_H
 #define RS_GRAPHIC_H
 
+#include <vector>
 #include <QDateTime>
+#include <QHash>
 #include "rs_blocklist.h"
 #include "rs_layerlist.h"
 #include "rs_variabledict.h"
@@ -338,6 +340,21 @@ public:
         return pagesNumV;
     }
 
+    /**
+     * LTYPE table entries read from a DXF/DWG file: drawn in drawing units and written back as read
+     * (see RS_Pen::getLineTypeName). Shape/text elements of complex linetypes are kept as their gaps.
+     */
+    struct DxfLineType {
+        QString name;
+        QString description;
+        std::vector<double> pattern;    // DXF group 49: + dash, - gap, 0 dot
+    };
+    void addDxfLineType(const DxfLineType& lt);
+    const DxfLineType* findDxfLineType(const QString& name) const;
+    const std::vector<DxfLineType>& getDxfLineTypes() const {
+        return dxfLineTypes;
+    }
+
     friend std::ostream& operator << (std::ostream& os, RS_Graphic& g);
 
     int clean();
@@ -364,6 +381,9 @@ private:
         // Number of pages drawing occupies
         int pagesNumH = 1;
         int pagesNumV = 1;
+
+        std::vector<DxfLineType> dxfLineTypes;
+        QHash<QString, size_t> dxfLineTypeIndex;   // upper-case name -> dxfLineTypes
 };
 
 

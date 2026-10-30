@@ -80,6 +80,51 @@ struct RS_GraphicView::ColorData {
     bool hideRelativeZero = false;
 };
 
+namespace {
+/**
+ * DXF linetype pattern (group 49: + dash, - gap, 0 dot) in device pixels as alternating
+ * dash, gap, ... starting with a dash. Empty = draw solid: no gaps, or the whole pattern
+ * under 3 pixels (AutoCAD's dashes are just as unreadable there and look solid).
+ */
+QVector<double> dxfScreenPattern(const std::vector<double>& pattern, double pxPerUnit)
+{
+    QVector<double> runs;
+    bool lastDash = false;
+    double total = 0.;
+    for (double d: pattern) {
+        const bool dash = d >= 0.;
+        const double len = std::abs(d) * pxPerUnit;
+        total += len;
+        if (!runs.isEmpty() && dash == lastDash)
+            runs.back() += len;
+        else
+            runs.push_back(len);
+        lastDash = dash;
+    }
+    if (runs.size() < 2 || !(total >= 3.))
+        return {};
+    const bool firstDash = pattern.front() >= 0.;
+    if (runs.size() % 2 == 1) {
+        // same kind at both ends: one run across the pattern's end
+        if (firstDash) {
+            runs.front() += runs.back();
+            runs.pop_back();
+        } else {
+            runs.back() += runs.front();
+            runs.pop_front();
+        }
+    } else if (!firstDash) {
+        runs.push_back(runs.front());
+        runs.pop_front();
+    }
+    if (runs.size() < 2)
+        return {};
+    for (int i = 0; i < runs.size(); i += 2)
+        runs[i] = std::max(runs[i], 1.);    // dots
+    return runs;
+}
+}
+
 /**
  * Constructor.
  */
@@ -1069,6 +1114,23 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e, double& p
          || (penColor.toIntColor() == RS_Color::Black
              && penColor.colorDistance(m_colorData->background) < RS_Color::MinColorDistance)) {
         pen.setColor(m_colorData->foreground);
+    }
+
+    // a linetype read from the file: its own pattern in drawing units x $LTSCALE x entity scale,
+    // as AutoCAD draws it, instead of the built-in pattern of fixed screen size
+    if (!draftMode && !pen.getLineTypeName().isEmpty()) {
+        RS_Graphic* graphic = container->getGraphic();
+        const RS_Graphic::DxfLineType* lt = graphic ? graphic->findDxfLineType(pen.getLineTypeName()) : nullptr;
+        if (lt) {
+            double ltscale = graphic->getVariableDouble("$LTSCALE", 1.0);
+            if (ltscale <= 0.)
+                ltscale = 1.;
+            QVector<double> screen = dxfScreenPattern(lt->pattern, toGuiDX(ltscale * pen.getLineTypeScale()));
+            if (screen.isEmpty())
+                pen.setLineType(RS2::SolidLine);
+            else
+                pen.setScreenPattern(screen);
+        }
     }
 
     pen.setDashOffset(patternOffset);

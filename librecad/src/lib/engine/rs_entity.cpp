@@ -831,7 +831,9 @@ RS_Pen RS_Entity::getPen(bool resolve) const {
             ep = parent;
             while (p.getLineType()==RS2::LineByBlock){
                 if (ep) {
-                    p.setLineType(parent->getPen().getLineType());
+                    const RS_Pen pp = parent->getPen();
+                    p.setLineType(pp.getLineType());
+                    p.setLineTypeName(pp.getLineTypeName());
                     ep = ep->parent;
                 } else
                     break;
@@ -851,7 +853,9 @@ RS_Pen RS_Entity::getPen(bool resolve) const {
 
             // use layer's linetype:
             if (p.getLineType()==RS2::LineByLayer) {
-                p.setLineType(l->getPen().getLineType());
+                const RS_Pen& lp = l->getPen();
+                p.setLineType(lp.getLineType());
+                p.setLineTypeName(lp.getLineTypeName());
             }
             //}
         }

@@ -214,6 +214,13 @@ void RS_AtomicEntity::updateDashOffset(RS_Painter& painter, RS_GraphicView& view
 {
     // Adjust dash offset
     RS_Pen pen = painter.getPen();
+    if (!pen.getScreenPattern().isEmpty()) {
+        // linetype from the file (pattern in device pixels): continue it along connected segments
+        pen.setDashOffset(-patternOffset * view.getFactor().x);
+        painter.setPen(pen);
+        patternOffset -= getLength();
+        return;
+    }
     if (pen.getLineType() == RS2::SolidLine || view.getGraphic() == nullptr)
         return;
 

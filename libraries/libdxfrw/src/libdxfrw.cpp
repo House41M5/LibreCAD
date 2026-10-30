@@ -186,6 +186,9 @@ bool dxfRW::writeEntity(DRW_Entity *ent) {
     if (version > DRW::AC1014) {
         writer->writeInt16(370, DRW_LW_Conv::lineWidth2dxfInt(ent->lWeight));
     }
+    if (version > DRW::AC1009 && ent->ltypeScale != 1.0) {
+        writer->writeDouble(48, ent->ltypeScale);
+    }
     if (!ent->visible) {
         writer->writeInt16(60, 1);
     }
