@@ -513,26 +513,9 @@ void RS_PainterQt::drawPoint(const RS_Vector& p, int pdmode, int pdsize) {
 
 	/*	Surrounding circle if required  */
 	if (DXF_FORMAT_PDMode_hasEncloseCircle(pdmode)) {
-		/*	Approximate circle by an octagon  */
-		int xMin = screenX-halfPDSize;
-		int xMax = screenX+halfPDSize;
-		int yMin = screenY-halfPDSize;
-		int yMax = screenY+halfPDSize;
-		int octOffset = halfPDSize * 0.71;
-		int xOctMin = screenX - octOffset;
-		int xOctMax = screenX + octOffset;
-		int yOctMin = screenY - octOffset;
-		int yOctMax = screenY + octOffset;
-
-		QPainter::drawLine(screenX, yMin, xOctMax, yOctMin);
-		QPainter::drawLine(screenX, yMin, xOctMin, yOctMin);
-		QPainter::drawLine(screenX, yMax, xOctMax, yOctMax);
-		QPainter::drawLine(screenX, yMax, xOctMin, yOctMax);
-
-		QPainter::drawLine(xMin, screenY, xOctMin, yOctMin);
-		QPainter::drawLine(xMin, screenY, xOctMin, yOctMax);
-		QPainter::drawLine(xMax, screenY, xOctMax, yOctMin);
-		QPainter::drawLine(xMax, screenY, xOctMax, yOctMax);
+		/*	A real circle, as the Points preferences show it (was an octagon
+			of 8 lines; drawn like drawCircle above)  */
+		QPainter::drawEllipse(QPointF(screenX, screenY), halfPDSize, halfPDSize);
 	}
 
 	/*	Surrounding square if required  */
