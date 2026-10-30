@@ -39,6 +39,7 @@
 #include "rs_debug.h"
 #include "rs_dialogfactory.h"
 #include "rs_eventhandler.h"
+#include "rs_filterdxfrw.h"
 #include "rs_graphic.h"
 #include "rs_grid.h"
 #include "rs_line.h"
@@ -1117,10 +1118,15 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e, double& p
     }
 
     // a linetype read from the file: its own pattern in drawing units x $LTSCALE x entity scale,
-    // as AutoCAD draws it, instead of the built-in pattern of fixed screen size
-    if (!draftMode && !pen.getLineTypeName().isEmpty()) {
-        RS_Graphic* graphic = container->getGraphic();
-        const RS_Graphic::DxfLineType* lt = graphic ? graphic->findDxfLineType(pen.getLineTypeName()) : nullptr;
+    // as AutoCAD draws it, instead of the built-in pattern of fixed screen size. A line drawn here
+    // has no name yet: it takes the file's linetype of the name it will be saved under, so it looks
+    // the same before and after saving.
+    RS_Graphic* graphic = draftMode ? nullptr : container->getGraphic();
+    if (graphic && !graphic->getDxfLineTypes().empty()) {
+        QString name = pen.getLineTypeName();  // WATERLINE etc. come as SolidLine with their name
+        if (name.isEmpty() && pen.getLineType() != RS2::SolidLine)
+            name = RS_FilterDXFRW::lineTypeToName(pen.getLineType());
+        const RS_Graphic::DxfLineType* lt = name.isEmpty() ? nullptr : graphic->findDxfLineType(name);
         if (lt) {
             double ltscale = graphic->getVariableDouble("$LTSCALE", 1.0);
             if (ltscale <= 0.)

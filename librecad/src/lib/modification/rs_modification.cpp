@@ -391,6 +391,9 @@ bool RS_Modification::changeAttributes(
         if (data.changeWidth==true) {
             pen.setWidth(data.pen.getWidth());
         }
+        if (data.changeLineTypeScale) {
+            pen.setLineTypeScale(data.pen.getLineTypeScale());
+        }
         cl->setPen(pen);
 
         if (m_graphicView) {

@@ -374,6 +374,8 @@ void QG_DlgOptionsDrawing::setGraphic(RS_Graphic* g)
     RS_DEBUG->print("QG_DlgOptionsDrawing::setGraphic: splinesegs is: %d",
                     splinesegs);
 
+    leLtScale->setText(QString::number(graphic->getVariableDouble("$LTSCALE", 1.0)));
+
     // encoding:
     /*
     QString encoding = graphic->getVariableString("$DWGCODEPAGE",
@@ -642,6 +644,13 @@ void QG_DlgOptionsDrawing::validate() {
 
         RS_DEBUG->print("QG_DlgOptionsDrawing::validate: splinesegs is: %s",
                         cbSplineSegs->currentText().toLatin1().data());
+
+        // linetypes: a value that is not a positive number leaves LTSCALE as it was
+        bool okLts = false;
+        double ltscale = RS_Math::eval(leLtScale->text(), &okLts);
+        if (okLts && ltscale > 0.) {
+            graphic->addVariable("$LTSCALE", ltscale, 40);
+        }
 
         // update all dimension and spline entities in the graphic to match the new settings:
         // update text position when text height or text gap changed

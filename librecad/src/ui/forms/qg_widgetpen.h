@@ -42,6 +42,7 @@ public:
     virtual bool isColorUnchanged();
     virtual bool isLineTypeUnchanged();
     virtual bool isWidthUnchanged();
+    bool isLineTypeScaleUnchanged() const;
 
 public slots:
     virtual void setPen( RS_Pen pen, bool showByLayer, bool showUnchanged, const QString & title );
@@ -57,6 +58,10 @@ protected:
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
 
+private:
+    // the pen shown: its linetype name (from the file) and linetype scale, which the boxes do not hold
+    RS_Pen origPen;
+    bool showUnchanged = false;
 };
 
 #endif // QG_WIDGETPEN_H

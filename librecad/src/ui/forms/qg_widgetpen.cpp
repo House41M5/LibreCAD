@@ -32,6 +32,7 @@
 #include "qg_linetypebox.h"
 #include "rs_debug.h"
 #include "rs_entity.h"
+#include "rs_math.h"
 
 /*
  *  Constructs a QG_WidgetPen as a child of 'parent', with the
@@ -48,8 +49,10 @@ QG_WidgetPen::QG_WidgetPen(QWidget* parent, Qt::WindowFlags fl)
 //    setTabOrder(cbWidth, cbLineType); // cbColor to cbWidth to cbLineType
 }
 
-void QG_WidgetPen::setPen(RS_Pen pen, bool showByLayer, 
+void QG_WidgetPen::setPen(RS_Pen pen, bool showByLayer,
                           bool showUnchanged, const QString& title) {
+    origPen = pen;
+    this->showUnchanged = showUnchanged;
     cbColor->init(showByLayer, showUnchanged);
     cbWidth->init(showByLayer, showUnchanged);
     cbLineType->init(showByLayer, showUnchanged);
@@ -58,6 +61,20 @@ void QG_WidgetPen::setPen(RS_Pen pen, bool showByLayer,
        cbWidth->setWidth(pen.getWidth());
        cbLineType->setLineType(pen.getLineType());
     }
+
+    // a linetype from the file shows as its nearest built-in type (WATERLINE as Continuous): name it
+    QString name = showUnchanged ? QString() : pen.getLineTypeName();
+    lLineType->setText(name.isEmpty() ? tr("Line type:") : tr("Line type:") + " " + name);  // 2 lines get clipped
+    if (!name.isEmpty()) {
+        // dialogs pin this widget's minimum width (230 in Line), which clips the name: let it grow to fit
+        bgPen->layout()->invalidate();
+        setMinimumWidth(qMax(minimumWidth(), bgPen->minimumSizeHint().width()));
+    }
+    // entities only: a layer has no linetype scale in DXF
+    lLineTypeScale->setVisible(showByLayer);
+    leLineTypeScale->setVisible(showByLayer);
+    leLineTypeScale->setPlaceholderText(showUnchanged ? tr("- unchanged -") : QString());
+    leLineTypeScale->setText(showUnchanged ? QString() : QString::number(pen.getLineTypeScale()));
 
     if (!title.isEmpty()) {
         bgPen->setTitle(title);
@@ -75,6 +92,8 @@ void QG_WidgetPen::setPen(RS_Entity* entity, RS_Layer* layer, const QString &tit
     entityResolvedPen.setColor(resolvedColor);
 
     entityResolvedPen.setLineType(entityPen.getLineType());
+    entityResolvedPen.setLineTypeName(entityPen.getLineTypeName());
+    entityResolvedPen.setLineTypeScale(entityPen.getLineTypeScale());
     entityResolvedPen.setWidth(entityPen.getWidth());
 
     setPen(entityResolvedPen, layer, title);
@@ -100,8 +119,20 @@ RS_Pen QG_WidgetPen::getPen() {
     pen.setColor(cbColor->getColor());
     pen.setWidth(cbWidth->getWidth());
     pen.setLineType(cbLineType->getLineType());
+    // the linetype left as it was keeps the file's name (else WATERLINE is saved as CONTINUOUS)
+    if (pen.getLineType() == origPen.getLineType())
+        pen.setLineTypeName(origPen.getLineTypeName());
+    bool ok = false;
+    double scale = RS_Math::eval(leLineTypeScale->text(), &ok);
+    pen.setLineTypeScale(ok && scale > 0. ? scale : origPen.getLineTypeScale());
 
     return pen;
+}
+
+bool QG_WidgetPen::isLineTypeScaleUnchanged() const {
+    bool ok = false;
+    double scale = RS_Math::eval(leLineTypeScale->text(), &ok);
+    return !(ok && scale > 0.);
 }
 
 bool QG_WidgetPen::isColorUnchanged() {

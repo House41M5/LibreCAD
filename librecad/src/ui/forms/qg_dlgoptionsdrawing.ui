@@ -1606,7 +1606,7 @@
      </widget>
      <widget class="QWidget" name="tab5">
       <attribute name="title">
-       <string>&amp;Splines</string>
+       <string>&amp;Splines &amp;&amp; Linetypes</string>
       </attribute>
       <layout class="QVBoxLayout">
        <item>
@@ -1656,6 +1656,27 @@
              <string notr="true">64</string>
             </property>
            </item>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item>
+          <widget class="QLabel" name="lLtScale">
+           <property name="text">
+            <string>Global linetype scale (LTSCALE):</string>
+           </property>
+           <property name="wordWrap">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="leLtScale">
+           <property name="toolTip">
+            <string>Dash patterns from the drawing's linetype table are drawn at their size in drawing units times this value (and times each entity's own linetype scale)</string>
+           </property>
           </widget>
          </item>
         </layout>

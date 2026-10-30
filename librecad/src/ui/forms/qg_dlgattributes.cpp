@@ -81,6 +81,7 @@ void QG_DlgAttributes::updateData() {
     data->changeColor = !wPen->isColorUnchanged();
     data->changeLineType = !wPen->isLineTypeUnchanged();
     data->changeWidth = !wPen->isWidthUnchanged();
+    data->changeLineTypeScale = !wPen->isLineTypeScaleUnchanged();
 
     data->changeLayer = !cbLayer->isUnchanged();
 

@@ -174,6 +174,7 @@ struct RS_AttributesData {
         bool changeColor = false;
         bool changeLineType = false;
         bool changeWidth = false;
+        bool changeLineTypeScale = false;
         bool applyBlockDeep = false;
 };
 
