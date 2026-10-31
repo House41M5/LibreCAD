@@ -14,7 +14,8 @@
 // What:    File menu + File toolbar:
 //          "เปิด DWG…" (after Open) runs `python -I ~/dxf-tools/dwgtask.py dwg <file>` (LibreDWG dwg2dxf +
 //          dwg2lc.py) and opens the DXF from its "OUT: <path>" line in a new tab.
-//          The DWG itself is never written; the DXF goes to Documents/LibreCAD/from-dwg/.
+//          The DWG itself is never written; the DXF goes to Documents/LibreCAD/from-dwg/, or to DWGTASK_OUT when
+//          that is set (dwgtask.py reads it; the plugin reads it too, for the "converted before" question).
 //          "บันทึกเป็น DWG…" (after Save as) converts the active drawing's DXF file with
 //          `dwgtask.py todwg <dxf> <target>` (lc2dwg.py + LibreDWG dxf2dwg) into an AutoCAD 2000 DWG.
 //          Until 2026-10-25 both went through `ruby -S rake`; Smart App Control then blocked scoop's ruby
@@ -103,6 +104,16 @@ void insertAfter(QWidget *w, QAction *after, QAction *act)
         w->addAction(act);
 }
 
+// Where dwgtask.py puts the DXF: DWG_OUT there = DWGTASK_OUT when set (not empty), else Documents/LibreCAD/from-dwg.
+// Machines with Controlled Folder Access on set DWGTASK_OUT outside Documents (INSTALL-TH 7 d, Lenovo 2026-11-01).
+QString fromDwgDir()
+{
+    const QString env = qEnvironmentVariable("DWGTASK_OUT");
+    if (!env.isEmpty())
+        return QDir::cleanPath(QDir::fromNativeSeparators(env));
+    return QDir::homePath() + QStringLiteral("/Documents/LibreCAD/from-dwg");
+}
+
 QString findPython()
 {
     const QString env = qEnvironmentVariable("PYTHON");
@@ -181,7 +192,8 @@ void LC_DwgOpen::install()
     QAction *open = win->findChild<QAction *>(QStringLiteral("FileOpen"));
     auto *actOpen = new QAction(dwgIcon(open ? open->icon() : fallback), tr8("เปิด DWG…"), this);
     actOpen->setObjectName(QStringLiteral("FileOpenDwg"));
-    QString tip = tr8("เปิด DWG: แปลงเป็น DXF ด้วย LibreDWG ก่อน (ไฟล์ DWG ไม่ถูกแก้ · DXF อยู่ใน Documents\\LibreCAD\\from-dwg)");
+    QString tip = tr8("เปิด DWG: แปลงเป็น DXF ด้วย LibreDWG ก่อน (ไฟล์ DWG ไม่ถูกแก้ · DXF อยู่ใน %1)")
+                      .arg(QDir::toNativeSeparators(fromDwgDir()));
     actOpen->setToolTip(tip);
     actOpen->setStatusTip(tip);
     connect(actOpen, &QAction::triggered, this, &LC_DwgOpen::chooseAndOpen);
@@ -301,8 +313,8 @@ void LC_DwgOpen::openDwg(const QString &dwg)
     }
 
     // Same place as DWG_OUT in ~/dxf-tools/dwgtask.py; only used to ask first - the DXF opened is the task's OUT line.
-    const QString expected = QDir::homePath() + QStringLiteral("/Documents/LibreCAD/from-dwg/")
-                             + src.completeBaseName() + QStringLiteral(".dxf");
+    // Until 2026-11-01 this was Documents/LibreCAD/from-dwg even with DWGTASK_OUT set (Lenovo: never asked, always redid).
+    const QString expected = fromDwgDir() + QLatin1Char('/') + src.completeBaseName() + QStringLiteral(".dxf");
     const QFileInfo old(expected);
     if (old.exists()) {
         QMessageBox box(QMessageBox::Question, name(),
