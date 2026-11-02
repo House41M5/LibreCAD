@@ -48,6 +48,7 @@
 #include "rs_text.h"
 #include "rs_units.h"
 #include "lc_splinepoints.h"
+#include "lc_splinestroke.h"
 #include "lc_undosection.h"
 
 #ifdef EMU_C99
@@ -3309,6 +3310,25 @@ bool RS_Modification::explode(const bool remove /*= true*/)
                 bool resolveLayer;
 
                 switch (ec->rtti()) {
+                case RS2::EntitySpline: {
+                    // 2026-11-02 (plans-win librecad-factory-drawings step 20): the lines inside an RS_Spline
+                    // are its display polygon with pen FlagInvalid; cloned as they were, every line came out
+                    // colour 7 / CONTINUOUS / lineweight 0. Lines from lc::splineStrokePoints() (the same
+                    // points) get the spline's own layer and pen instead.
+                    std::vector<RS_Vector> pts;
+                    bool closed = false;
+                    if (lc::splineStrokePoints(ec, 0, pts, closed)) {
+                        for (size_t i = 1; i < pts.size(); ++i) {
+                            auto* line = new RS_Line(m_container, pts[i - 1], pts[i]);
+                            line->setLayer(ec->getLayer());
+                            line->setPen(ec->getPen(false));
+                            addList.push_back(line);
+                        }
+                    } else {
+                        ec->setSelected(false); // nothing to replace it with: keep it
+                    }
+                    continue;
+                }
                 case RS2::EntityMText:
                 case RS2::EntityText:
                 case RS2::EntityHatch:
@@ -3378,6 +3398,22 @@ bool RS_Modification::explode(const bool remove /*= true*/)
                         clone->update();
 */
                     }
+                }
+            } else if (e->rtti() == RS2::EntitySplinePoints) {
+                // 2026-11-02 (step 20): LC_SplinePoints is atomic, so the branch above never saw it and
+                // Explode left it alone without a message. Same lines as the RS_Spline case.
+                std::vector<RS_Vector> pts;
+                bool closed = false;
+                if (lc::splineStrokePoints(e, 0, pts, closed)) {
+                    for (size_t i = 1; i < pts.size(); ++i) {
+                        auto* line = new RS_Line(m_container, pts[i - 1], pts[i]);
+                        line->setLayer(e->getLayer());
+                        line->setPen(e->getPen(false));
+                        addList.push_back(line);
+                    }
+                    // stays selected: deselectOriginals() below removes it like the exploded containers
+                } else {
+                    e->setSelected(false);
                 }
             } else {
                 e->setSelected(false);

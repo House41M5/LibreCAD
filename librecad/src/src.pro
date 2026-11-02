@@ -284,6 +284,8 @@ HEADERS += \
     ui/forms/lc_crossoptions.h \
     ui/forms/lc_lineanglereloptions.h \
     ui/forms/lc_linejoinoptions.h \
+    ui/forms/lc_splineexplodeoptions.h \
+    ui/forms/lc_splinefrompolylineoptions.h \
     ui/forms/lc_lineoptions.h \
     ui/forms/lc_slicedivideoptions.h\
     ui/forms/lc_rectangle2pointsoptions.h \
@@ -438,6 +440,8 @@ SOURCES += \
     ui/forms/lc_crossoptions.cpp \
     ui/forms/lc_lineanglereloptions.cpp \
     ui/forms/lc_linejoinoptions.cpp \
+    ui/forms/lc_splineexplodeoptions.cpp \
+    ui/forms/lc_splinefrompolylineoptions.cpp \
     ui/forms/lc_lineoptions.cpp \
     ui/forms/lc_rectangle3pointsoptions.cpp \
     ui/forms/lc_rectangle1pointoptions.cpp \
@@ -511,6 +515,8 @@ HEADERS += actions/rs_actionblocksadd.h \
     actions/rs_actiondrawspline.h \
     actions/lc_actiondrawsplinepoints.h \
     actions/lc_actionsplinemodify.h \
+    actions/lc_actionsplineexplode.h \
+    lib/engine/lc_splinestroke.h \
     actions/lc_splinepointsedit.h \
     actions/rs_actiondrawtext.h \
     actions/rs_actioneditcopy.h \
@@ -653,6 +659,7 @@ SOURCES += actions/rs_actionblocksadd.cpp \
     actions/rs_actiondrawspline.cpp \
     actions/lc_actiondrawsplinepoints.cpp \
     actions/lc_actionsplinemodify.cpp \
+    actions/lc_actionsplineexplode.cpp \
     actions/rs_actiondrawtext.cpp \
     actions/rs_actioneditcopy.cpp \
     actions/rs_actioneditpaste.cpp \
@@ -955,6 +962,8 @@ FORMS = ui/forms/qg_commandwidget.ui \
     ui/forms/lc_crossoptions.ui \
     ui/forms/lc_lineanglereloptions.ui \
     ui/forms/lc_linejoinoptions.ui \
+    ui/forms/lc_splineexplodeoptions.ui \
+    ui/forms/lc_splinefrompolylineoptions.ui \
     ui/forms/lc_linefrompointtolineoptions.ui \
     ui/forms/lc_linepointsoptions.ui \
     ui/forms/lc_modifybreakdivideoptions.ui \

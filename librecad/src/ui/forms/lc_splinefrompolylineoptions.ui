@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LC_SplineFromPolylineOptions</class>
+ <widget class="QWidget" name="LC_SplineFromPolylineOptions">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>700</width>
+    <height>24</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <property name="topMargin">
+    <number>1</number>
+   </property>
+   <property name="bottomMargin">
+    <number>1</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="lDegree">
+     <property name="text">
+      <string>Degree:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSpinBox" name="sbDegree">
+     <property name="toolTip">
+      <string>Degree of the spline.</string>
+     </property>
+     <property name="minimum">
+      <number>1</number>
+     </property>
+     <property name="maximum">
+      <number>3</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="lMidPoints">
+     <property name="text">
+      <string>Mid points:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSpinBox" name="sbMidPoints">
+     <property name="toolTip">
+      <string>Points added inside each polyline segment.</string>
+     </property>
+     <property name="minimum">
+      <number>0</number>
+     </property>
+     <property name="maximum">
+      <number>50</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbFitPoints">
+     <property name="toolTip">
+      <string>With degree 2: the spline passes through the points (spline through points). Otherwise the points are control points.</string>
+     </property>
+     <property name="text">
+      <string>Through Vertices</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbKeepOriginals">
+     <property name="toolTip">
+      <string>If checked, the original entity stays; otherwise it is removed.</string>
+     </property>
+     <property name="text">
+      <string>Keep Originals</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbCurrentLayer">
+     <property name="toolTip">
+      <string>If checked, the new entities go to the current layer; otherwise to the layer of the original.</string>
+     </property>
+     <property name="text">
+      <string>Current Layer</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbCurrentAttr">
+     <property name="toolTip">
+      <string>If checked, the new entities get the current pen (colour, line type, width); otherwise the pen of the original.</string>
+     </property>
+     <property name="text">
+      <string>Current Attributes</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -339,6 +339,8 @@ void QG_CadToolBar::showCadToolBar(RS2::ActionType actionType, bool cleanup){
     case RS2::ActionDrawSplinePointAppend:
     case RS2::ActionDrawSplinePointRemove:
     case RS2::ActionDrawSplinePointDelTwo:
+    case RS2::ActionDrawSplineExplode:
+    case RS2::ActionDrawSplineFromPolyline:
 		id=RS2::ToolBarSplines;
         break;
     case RS2::ActionDrawLine:

@@ -503,6 +503,17 @@ RS_Commands::RS_Commands() {
             {{"vb", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vb", "remove spline points between two")}},
             RS2::ActionDrawSplinePointDelTwo
         },
+        // spline <-> polyline (backport of master's actions, 2026-11-02; master has no keycodes)
+        {
+            {{"splexplode", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splexplode", "explode spline to polyline or lines")}},
+            {{"vx", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vx", "explode spline to polyline or lines")}},
+            RS2::ActionDrawSplineExplode
+        },
+        {
+            {{"splfrompoly", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splfrompoly", "spline from polyline")}},
+            {{"vp", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vp", "spline from polyline")}},
+            RS2::ActionDrawSplineFromPolyline
+        },
         // draw ellipse arc by axis - v2.2.0r2
         {
             {{"arcellc2ax", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "arcellc2ax", "arc ellipse")}},

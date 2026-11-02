@@ -1221,8 +1221,13 @@ std::vector<RS_Vector> const& LC_SplinePoints::getControlPoints() const
 
 std::vector<RS_Vector> LC_SplinePoints::getStrokePoints() const
 {
+    return getStrokePoints(getGraphicVariableInt("$SPLINESEGS", 8));
+}
+
+// 2026-11-02 (spline explode actions): body of the old getStrokePoints() with the resolution as a parameter.
+std::vector<RS_Vector> LC_SplinePoints::getStrokePoints(int p1) const
+{
 	std::vector<RS_Vector> ret;
-    int p1 = getGraphicVariableInt("$SPLINESEGS", 8);
 	size_t iSplines = data.controlPoints.size();
 	if(!data.closed) iSplines -= 2;
 

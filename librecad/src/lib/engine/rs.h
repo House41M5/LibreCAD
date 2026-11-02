@@ -294,6 +294,8 @@ namespace RS2 {
         ActionDrawSplinePointAppend,  // append points at an end
         ActionDrawSplinePointRemove,  // remove points
         ActionDrawSplinePointDelTwo,  // remove the points between two
+        ActionDrawSplineExplode,      // spline -> polyline / lines (2026-11-02, names as in master)
+        ActionDrawSplineFromPolyline, // polyline -> spline
         ActionDrawPolyline,
         ActionDrawText,
 

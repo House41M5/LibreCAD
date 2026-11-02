@@ -178,6 +178,8 @@ public slots:
     void slotDrawSplinePointAppend();
     void slotDrawSplinePointRemove();
     void slotDrawSplinePointDelTwo();
+    void slotDrawSplineExplode();
+    void slotDrawSplineFromPolyline();
 	void slotDrawMText();
 	void slotDrawText();
 	void slotDrawHatch();

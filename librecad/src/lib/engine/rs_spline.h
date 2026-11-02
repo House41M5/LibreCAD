@@ -146,6 +146,13 @@ public:
 
 		void draw(RS_Painter* painter, RS_GraphicView* view, double& patternOffset) override;
 		const std::vector<RS_Vector>& getControlPoints() const;
+		/**
+		 * Points along the curve, computed exactly as update() computes the lines it draws:
+		 * segmentsPerPoint * (number of control points, wrapped ones included) points, the file's
+		 * knot vector when it has the right size. A closed spline ends on its first point.
+		 * update() uses $SPLINESEGS; the spline explode actions pass their own count.
+		 */
+		std::vector<RS_Vector> getStrokePoints(int segmentsPerPoint) const;
 
         friend std::ostream& operator << (std::ostream& os, const RS_Spline& l);
 

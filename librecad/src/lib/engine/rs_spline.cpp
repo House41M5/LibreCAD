@@ -221,6 +221,33 @@ void RS_Spline::update() {
 	}
 }
 
+// 2026-11-02 (spline explode actions): the same computation as update() above, on a copy of the
+// control points so it can be const, with the caller's resolution instead of $SPLINESEGS.
+std::vector<RS_Vector> RS_Spline::getStrokePoints(int segmentsPerPoint) const {
+    if (data.degree < 1 || data.degree > 3) {
+        return {};
+    }
+    if ((!data.closed && data.controlPoints.size() < size_t(data.degree) + 1) || data.controlPoints.size() < 3) {
+        return {};
+    }
+    std::vector<RS_Vector> cp = data.controlPoints;
+    if (data.closed && !hasWrappedControlPoints()) {
+        std::vector<RS_Vector> wrappedPoints{cp.cbegin(), cp.cbegin() + data.degree};
+        cp.insert(cp.end(), wrappedPoints.cbegin(), wrappedPoints.cend());
+    }
+    const size_t npts = cp.size();
+    const size_t k = data.degree + 1;
+    const size_t p1 = size_t(std::max(1, segmentsPerPoint)) * npts;
+    std::vector<double> h(npts + 1, 1.);
+    std::vector<RS_Vector> p(p1, {0., 0.});
+    if (data.closed) {
+        rbsplinu(npts, k, p1, cp, h, p);
+    } else {
+        rbspline(npts, k, p1, cp, h, p);
+    }
+    return p;
+}
+
 RS_Vector RS_Spline::getStartpoint() const {
    if (data.closed) return RS_Vector(false);
    return static_cast<RS_Line*>(const_cast<RS_Spline*>(this)->firstEntity())->getStartpoint();

@@ -36,6 +36,7 @@
 #include "lc_actiondrawhyperbolafp.h"
 #include "lc_actiondrawparabola4points.h"
 #include "lc_actionsplinemodify.h"
+#include "lc_actionsplineexplode.h"
 #include "lc_actiondrawparabolaFD.h"
 
 #include "rs_dialogfactory.h"
@@ -661,6 +662,12 @@ RS_ActionInterface* QG_ActionHandler::setCurrentAction(RS2::ActionType id) {
         break;
     case RS2::ActionDrawSplinePointDelTwo:
         a = new LC_ActionSplineRemoveBetween(*document, *view);
+        break;
+    case RS2::ActionDrawSplineExplode:
+        a = new LC_ActionSplineExplode(*document, *view);
+        break;
+    case RS2::ActionDrawSplineFromPolyline:
+        a = new LC_ActionSplineFromPolyline(*document, *view);
         break;
     case RS2::ActionDrawMText:
         a = new RS_ActionDrawMText(*document, *view);
@@ -1771,6 +1778,14 @@ void QG_ActionHandler::slotDrawSplinePointRemove() {
 
 void QG_ActionHandler::slotDrawSplinePointDelTwo() {
     setCurrentAction(RS2::ActionDrawSplinePointDelTwo);
+}
+
+void QG_ActionHandler::slotDrawSplineExplode() {
+    setCurrentAction(RS2::ActionDrawSplineExplode);
+}
+
+void QG_ActionHandler::slotDrawSplineFromPolyline() {
+    setCurrentAction(RS2::ActionDrawSplineFromPolyline);
 }
 
 void QG_ActionHandler::slotDrawMText() {

@@ -330,6 +330,8 @@ librecad/src/ui/forms/lc_layertreeoptionsdialog.cpp
 librecad/src/ui/forms/lc_lineanglereloptions.cpp
 librecad/src/ui/forms/lc_linefrompointtolineoptions.cpp
 librecad/src/ui/forms/lc_linejoinoptions.cpp
+librecad/src/ui/forms/lc_splineexplodeoptions.cpp
+librecad/src/ui/forms/lc_splinefrompolylineoptions.cpp
 librecad/src/ui/forms/lc_lineoptions.cpp
 librecad/src/ui/forms/lc_linepointsoptions.cpp
 librecad/src/ui/forms/lc_modifybreakdivideoptions.cpp
@@ -522,6 +524,7 @@ librecad/src/actions/lc_actiondimarc.cpp
 librecad/src/actions/lc_actiondrawcircle2pr.cpp
 librecad/src/actions/lc_actiondrawsplinepoints.cpp
 librecad/src/actions/lc_actionsplinemodify.cpp
+librecad/src/actions/lc_actionsplineexplode.cpp
 librecad/src/actions/lc_actionlayersexport.cpp
 librecad/src/actions/rs_actiondimaligned.cpp
 librecad/src/actions/rs_actiondimdiametric.cpp
@@ -737,6 +740,8 @@ librecad/src/ui/forms/lc_layertreeoptionsdialog.ui
 librecad/src/ui/forms/lc_lineanglereloptions.ui
 librecad/src/ui/forms/lc_linefrompointtolineoptions.ui
 librecad/src/ui/forms/lc_linejoinoptions.ui
+librecad/src/ui/forms/lc_splineexplodeoptions.ui
+librecad/src/ui/forms/lc_splinefrompolylineoptions.ui
 librecad/src/ui/forms/lc_lineoptions.ui
 librecad/src/ui/forms/lc_linepointsoptions.ui
 librecad/src/ui/forms/lc_modifybreakdivideoptions.ui

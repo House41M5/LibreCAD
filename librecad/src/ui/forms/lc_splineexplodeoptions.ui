@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LC_SplineExplodeOptions</class>
+ <widget class="QWidget" name="LC_SplineExplodeOptions">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>700</width>
+    <height>24</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <property name="topMargin">
+    <number>1</number>
+   </property>
+   <property name="bottomMargin">
+    <number>1</number>
+   </property>
+   <item>
+    <widget class="QCheckBox" name="cbPolyline">
+     <property name="toolTip">
+      <string>If checked, the result is one polyline; otherwise separate lines.</string>
+     </property>
+     <property name="text">
+      <string>To Polyline</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbCustomSegments">
+     <property name="toolTip">
+      <string>If checked, use this number of line segments per control point (spline through points: per curve piece); otherwise the drawing setting $SPLINESEGS, which is what the screen shows.</string>
+     </property>
+     <property name="text">
+      <string>Segments:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSpinBox" name="sbSegments">
+     <property name="toolTip">
+      <string>Line segments per control point (spline through points: per curve piece).</string>
+     </property>
+     <property name="minimum">
+      <number>1</number>
+     </property>
+     <property name="maximum">
+      <number>1000</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbKeepOriginals">
+     <property name="toolTip">
+      <string>If checked, the original entity stays; otherwise it is removed.</string>
+     </property>
+     <property name="text">
+      <string>Keep Originals</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbCurrentLayer">
+     <property name="toolTip">
+      <string>If checked, the new entities go to the current layer; otherwise to the layer of the original.</string>
+     </property>
+     <property name="text">
+      <string>Current Layer</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="cbCurrentAttr">
+     <property name="toolTip">
+      <string>If checked, the new entities get the current pen (colour, line type, width); otherwise the pen of the original.</string>
+     </property>
+     <property name="text">
+      <string>Current Attributes</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

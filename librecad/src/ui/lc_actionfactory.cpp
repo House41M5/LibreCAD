@@ -575,6 +575,21 @@ void LC_ActionFactory::fillActionContainer(QMap<QString, QAction*>& a_map, LC_Ac
     action->setObjectName("DrawSplinePointsDelTwo");
     a_map["DrawSplinePointsDelTwo"] = action;
 
+    // spline <-> polyline: object names, texts and icons as in master
+    action = new QAction(tr("&Explode spline to lines"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_explode.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplineExplode()));
+    action->setObjectName("DrawSplineExplode");
+    a_map["DrawSplineExplode"] = action;
+
+    action = new QAction(tr("&Spline from polyline"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_from_polyline.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplineFromPolyline()));
+    action->setObjectName("DrawSplineFromPolyline");
+    a_map["DrawSplineFromPolyline"] = action;
+
     // <[~ Polyline ~]>
 
     action = new QAction(tr("&Polyline"), agm->polyline);

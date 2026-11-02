@@ -221,6 +221,9 @@ public:
     std::vector<RS_Vector> const& getPoints() const;
     std::vector<RS_Vector> const& getControlPoints() const;
     std::vector<RS_Vector> getStrokePoints() const;
+    /** Points along the curve, segmentsPerQuad per quadratic piece (getStrokePoints() uses $SPLINESEGS).
+     *  A closed curve does not repeat its first point at the end. Used by the spline explode actions. */
+    std::vector<RS_Vector> getStrokePoints(int segmentsPerQuad) const;
 
     friend std::ostream& operator << (std::ostream& os, const LC_SplinePoints& l);
 

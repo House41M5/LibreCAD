@@ -101,6 +101,8 @@
         <file>spline_points_insert.svg</file>
         <file>spline_points_remove.svg</file>
         <file>spline_points_remove_two.svg</file>
+        <file>spline_explode.svg</file>
+        <file>spline_from_polyline.svg</file>
         <file>spline.svg</file>
         <file>angle_line_to_line.svg</file>
         <file>attributes.svg</file>
