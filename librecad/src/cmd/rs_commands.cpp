@@ -482,6 +482,27 @@ RS_Commands::RS_Commands() {
                 {"stp", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "stp", "spline through points")}},
             RS2::ActionDrawSplinePoints
         },
+        // edit the points of a spline (backport of master's spline point actions, 2026-11-02)
+        {
+            {{"splinsert", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splinsert", "insert spline point")}},
+            {{"vi", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vi", "insert spline point")}},
+            RS2::ActionDrawSplinePointAdd
+        },
+        {
+            {{"splappend", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splappend", "append spline point")}},
+            {{"va", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "va", "append spline point")}},
+            RS2::ActionDrawSplinePointAppend
+        },
+        {
+            {{"splremove", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splremove", "remove spline point")}},
+            {{"vd", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vd", "remove spline point")}},
+            RS2::ActionDrawSplinePointRemove
+        },
+        {
+            {{"splremovetwo", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "splremovetwo", "remove spline points between two")}},
+            {{"vb", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "vb", "remove spline points between two")}},
+            RS2::ActionDrawSplinePointDelTwo
+        },
         // draw ellipse arc by axis - v2.2.0r2
         {
             {{"arcellc2ax", LC_CommandText QT_TRANSLATE_NOOP3("QObject", "arcellc2ax", "arc ellipse")}},

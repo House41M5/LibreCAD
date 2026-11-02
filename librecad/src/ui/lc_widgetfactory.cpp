@@ -127,6 +127,10 @@ LC_WidgetFactory::LC_WidgetFactory(QC_ApplicationWindow* main_win,
             << a_map["DrawParabolaFD"]
             << a_map["DrawSpline"]
             << a_map["DrawSplinePoints"]
+            << a_map["DrawSplinePointsAdd"]
+            << a_map["DrawSplinePointsAppend"]
+            << a_map["DrawSplinePointsRemove"]
+            << a_map["DrawSplinePointsDelTwo"]
             << a_map["DrawEllipseArcAxis"]
             << a_map["DrawLineFree"];
 

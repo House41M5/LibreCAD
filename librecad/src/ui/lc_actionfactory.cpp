@@ -546,6 +546,35 @@ void LC_ActionFactory::fillActionContainer(QMap<QString, QAction*>& a_map, LC_Ac
     action->setObjectName("DrawSplinePoints");
     a_map["DrawSplinePoints"] = action;
 
+    // editing the points of a spline: object names, texts and icons as in master
+    action = new QAction(tr("&Insert spline points"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_points_insert.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplinePointAdd()));
+    action->setObjectName("DrawSplinePointsAdd");
+    a_map["DrawSplinePointsAdd"] = action;
+
+    action = new QAction(tr("&Append spline point"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_points_add.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplinePointAppend()));
+    action->setObjectName("DrawSplinePointsAppend");
+    a_map["DrawSplinePointsAppend"] = action;
+
+    action = new QAction(tr("&Remove spline points"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_points_remove.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplinePointRemove()));
+    action->setObjectName("DrawSplinePointsRemove");
+    a_map["DrawSplinePointsRemove"] = action;
+
+    action = new QAction(tr("&Remove between two points"), agm->curve);
+    action->setIcon(QIcon(":/icons/spline_points_remove_two.svg"));
+    connect(action, SIGNAL(triggered()),
+    action_handler, SLOT(slotDrawSplinePointDelTwo()));
+    action->setObjectName("DrawSplinePointsDelTwo");
+    a_map["DrawSplinePointsDelTwo"] = action;
+
     // <[~ Polyline ~]>
 
     action = new QAction(tr("&Polyline"), agm->polyline);

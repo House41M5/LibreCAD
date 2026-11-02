@@ -290,6 +290,10 @@ namespace RS2 {
         ActionDrawPoint,
         ActionDrawSpline,
         ActionDrawSplinePoints, //interpolation spline
+        ActionDrawSplinePointAdd,     // insert a point (names as in master)
+        ActionDrawSplinePointAppend,  // append points at an end
+        ActionDrawSplinePointRemove,  // remove points
+        ActionDrawSplinePointDelTwo,  // remove the points between two
         ActionDrawPolyline,
         ActionDrawText,
 

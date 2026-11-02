@@ -510,6 +510,8 @@ HEADERS += actions/rs_actionblocksadd.h \
     actions/rs_actiondrawpolyline.h \
     actions/rs_actiondrawspline.h \
     actions/lc_actiondrawsplinepoints.h \
+    actions/lc_actionsplinemodify.h \
+    actions/lc_splinepointsedit.h \
     actions/rs_actiondrawtext.h \
     actions/rs_actioneditcopy.h \
     actions/rs_actioneditpaste.h \
@@ -650,6 +652,7 @@ SOURCES += actions/rs_actionblocksadd.cpp \
     actions/rs_actiondrawpolyline.cpp \
     actions/rs_actiondrawspline.cpp \
     actions/lc_actiondrawsplinepoints.cpp \
+    actions/lc_actionsplinemodify.cpp \
     actions/rs_actiondrawtext.cpp \
     actions/rs_actioneditcopy.cpp \
     actions/rs_actioneditpaste.cpp \

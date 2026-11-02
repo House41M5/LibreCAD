@@ -174,6 +174,10 @@ public slots:
     void slotDrawParabolaFD();
     void slotDrawSpline();
 	void slotDrawSplinePoints();
+    void slotDrawSplinePointAdd();
+    void slotDrawSplinePointAppend();
+    void slotDrawSplinePointRemove();
+    void slotDrawSplinePointDelTwo();
 	void slotDrawMText();
 	void slotDrawText();
 	void slotDrawHatch();

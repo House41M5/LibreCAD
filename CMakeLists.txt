@@ -521,6 +521,7 @@ librecad/src/actions/rs_actionzoomwindow.cpp
 librecad/src/actions/lc_actiondimarc.cpp
 librecad/src/actions/lc_actiondrawcircle2pr.cpp
 librecad/src/actions/lc_actiondrawsplinepoints.cpp
+librecad/src/actions/lc_actionsplinemodify.cpp
 librecad/src/actions/lc_actionlayersexport.cpp
 librecad/src/actions/rs_actiondimaligned.cpp
 librecad/src/actions/rs_actiondimdiametric.cpp
