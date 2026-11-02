@@ -19,6 +19,8 @@
 **********************************************************************/
 // Context: tool options of the explode spline action (lc_actionsplineexplode.h), 2026-11-02 step 20.
 // Settings: /Draw/SplineExplode*. Defaults differ from master on purpose - see the action's header.
+// Step 21 added Arcs + Tolerance (ToArcs, ArcTolerance); Segments only applies without Arcs and the other
+// way round, so each pair is disabled while the other mode is on.
 #ifndef LC_SPLINEEXPLODEOPTIONS_H
 #define LC_SPLINEEXPLODEOPTIONS_H
 
@@ -44,6 +46,8 @@ protected:
 protected slots:
     void languageChange() override;
     void onPolylineClicked(bool value);
+    void onArcsClicked(bool value);
+    void onToleranceEditingFinished();
     void onCustomSegmentsClicked(bool value);
     void onSegmentsChanged(int value);
     void onKeepOriginalsClicked(bool value);
@@ -51,7 +55,18 @@ protected slots:
     void onCurrentAttrClicked(bool value);
 
 private:
-    void apply(bool polyline, bool custom, int segments, bool keep, bool layer, bool attr);
+    struct Values {
+        bool polyline = true;
+        bool arcs = false;
+        double tolerance = 0.01;
+        bool custom = false;
+        int segments = 8;
+        bool keep = false;
+        bool layer = false;
+        bool attr = false;
+    };
+    Values fromAction() const;
+    void apply(const Values& v);
     Ui::LC_SplineExplodeOptions* ui;
     LC_ActionSplineExplode* action = nullptr;
 };

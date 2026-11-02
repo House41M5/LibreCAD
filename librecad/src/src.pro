@@ -517,6 +517,7 @@ HEADERS += actions/rs_actionblocksadd.h \
     actions/lc_actionsplinemodify.h \
     actions/lc_actionsplineexplode.h \
     lib/engine/lc_splinestroke.h \
+    lib/engine/lc_biarcfit.h \
     actions/lc_splinepointsedit.h \
     actions/rs_actiondrawtext.h \
     actions/rs_actioneditcopy.h \

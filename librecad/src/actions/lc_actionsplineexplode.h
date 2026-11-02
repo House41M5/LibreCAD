@@ -33,6 +33,9 @@
  *  - spline from polyline: the extra points on a straight segment divide it into (n+1) parts; master
  *    divides by n, so its last "middle" point is the segment end and the end point comes twice.
  *  - spline from polyline replaces the polyline by default (master keeps it), as PEDIT Spline does.
+ * Arcs mode (step 21, not in master): the spline becomes tangent-continuous arcs within a tolerance
+ * (lc_biarcfit.h), like AutoCAD with PLINECONVERTMODE=1 - fewer pieces than lines and no corners for a
+ * cutter to stop at. Off by default, as PLINECONVERTMODE is 0 by default.
  */
 #ifndef LC_ACTIONSPLINEEXPLODE_H
 #define LC_ACTIONSPLINEEXPLODE_H
@@ -70,13 +73,25 @@ public:
     void setCustomSegments(int n) { m_customSegments = n; }
     /** $SPLINESEGS of the drawing (8 when unset): what is used without custom segments. */
     int getDrawingSegments() const;
+    /** Arcs mode (step 21): tangent-continuous arcs within the tolerance instead of lines. */
+    bool isToArcs() const { return m_toArcs; }
+    void setToArcs(bool b) { m_toArcs = b; }
+    double getArcTolerance() const { return m_arcTolerance; }
+    void setArcTolerance(double t);
+
+    /** Smallest arc tolerance accepted (drawing units); smaller values are raised to it. */
+    static constexpr double kMinArcTolerance = 1e-6;
 
 protected:
     void createOptionsWidget() override;
 
 private:
-    /** The entities that replace e (not in the document), empty when e cannot be exploded. */
-    std::vector<RS_Entity*> exploded(const RS_Entity* e, RS_EntityContainer* parent) const;
+    /**
+     * The entities that replace e (not in the document), empty when e cannot be exploded.
+     * deviation (if given): Arcs mode - the largest deviation measured; otherwise 0.
+     */
+    std::vector<RS_Entity*> exploded(const RS_Entity* e, RS_EntityContainer* parent, double* deviation = nullptr) const;
+    std::vector<RS_Entity*> explodedToArcs(const RS_Entity* e, RS_EntityContainer* parent, double* deviation) const;
     void explodeEntity(RS_Entity* e);
 
     bool m_toPolyline = true;
@@ -85,6 +100,8 @@ private:
     bool m_useCurrentAttributes = false;
     bool m_useCustomSegments = false;
     int m_customSegments = 8;
+    bool m_toArcs = false;
+    double m_arcTolerance = 0.01;
 };
 
 /** Pick a polyline: it becomes a spline (control points) or a spline through its vertices. */

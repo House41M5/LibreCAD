@@ -21,7 +21,9 @@
  * Context and differences from master: see lc_actionsplineexplode.h.
  * Gotchas: setPenToActive()/setLayerToActive() look the document up through the parent, so they run
  * after reparent(). RS_Polyline::endPolyline() adds the closing segment from the last vertex to the
- * first, so a closed result gets its vertices without the repeated first point.
+ * first, so a closed result gets its vertices without the repeated first point; in Arcs mode the bulge
+ * given with a vertex belongs to the segment that starts there, so the closing segment takes the bulge
+ * of the last vertex added.
  */
 
 #include "lc_actionsplineexplode.h"
@@ -31,6 +33,7 @@
 
 #include <QMouseEvent>
 
+#include "lc_biarcfit.h"
 #include "lc_splineexplodeoptions.h"
 #include "lc_splinefrompolylineoptions.h"
 #include "lc_splinepoints.h"
@@ -42,6 +45,7 @@
 #include "rs_graphic.h"
 #include "rs_graphicview.h"
 #include "rs_line.h"
+#include "rs_math.h"
 #include "rs_polyline.h"
 #include "rs_preview.h"
 #include "rs_spline.h"
@@ -84,6 +88,43 @@ void replaceInDocument(RS_Document* document, RS_EntityContainer* parent, RS_Ent
     }
 }
 
+/**
+ * Points of e dense enough for the arc fit: the chords between them stay within about tolerance / 20 of
+ * the curve, so measuring the arcs against the chords costs little of the tolerance. Starts at 16 points
+ * per control point (spline through points: per curve piece), estimates the largest sagitta from the
+ * turn between neighbouring chords (sagitta ~ chord * turn / 8, quadratic in the spacing) and samples
+ * again as densely as needed, at most 4096 per control point and about 200000 points in all.
+ */
+bool densePoints(const RS_Entity* e, double tolerance, std::vector<RS_Vector>& pts, bool& closed) {
+    constexpr int base = 16;
+    if (!lc::splineStrokePoints(e, base, pts, closed)) {
+        return false;
+    }
+    double sagitta = 0.;
+    for (size_t i = 1; i + 1 < pts.size(); ++i) {
+        const RS_Vector a = pts[i] - pts[i - 1];
+        const RS_Vector b = pts[i + 1] - pts[i];
+        const double la = a.magnitude();
+        const double lb = b.magnitude();
+        if (la <= 0. || lb <= 0.) {
+            continue;
+        }
+        const double turn = std::acos(std::clamp(RS_Vector::dotP(a, b) / (la * lb), -1., 1.));
+        if (turn > lc::biarc::kCornerAngle) {
+            continue; // a corner of the curve, not a bend that denser points would follow better
+        }
+        sagitta = std::max(sagitta, 0.5 * (la + lb) * turn / 8.);
+    }
+    const double target = tolerance / 20.;
+    if (sagitta <= target) {
+        return true;
+    }
+    const size_t units = std::max<size_t>(1, pts.size() / base); // about the control points / curve pieces
+    const int cap = int(std::clamp<size_t>(200000 / units, base, 4096));
+    const int segments = std::min(cap, int(std::ceil(base * std::sqrt(sagitta / target))));
+    return segments <= base || lc::splineStrokePoints(e, segments, pts, closed);
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -104,7 +145,66 @@ int LC_ActionSplineExplode::getDrawingSegments() const {
     return n > 0 ? n : 8;
 }
 
-std::vector<RS_Entity*> LC_ActionSplineExplode::exploded(const RS_Entity* e, RS_EntityContainer* parent) const {
+void LC_ActionSplineExplode::setArcTolerance(double t) {
+    m_arcTolerance = std::isfinite(t) ? std::max(std::abs(t), kMinArcTolerance) : 0.01;
+}
+
+std::vector<RS_Entity*> LC_ActionSplineExplode::explodedToArcs(const RS_Entity* e, RS_EntityContainer* parent,
+                                                               double* deviation) const {
+    std::vector<RS_Entity*> result;
+    std::vector<RS_Vector> pts;
+    bool closed = false;
+    if (!densePoints(e, m_arcTolerance, pts, closed)) {
+        return result;
+    }
+    std::vector<lc::biarc::Vec> v;
+    v.reserve(pts.size());
+    for (const RS_Vector& p : pts) {
+        v.push_back({p.x, p.y});
+    }
+    const lc::biarc::Result fit = lc::biarc::fit(std::move(v), closed, m_arcTolerance);
+    if (fit.pieces.empty()) {
+        return result;
+    }
+    if (deviation != nullptr) {
+        *deviation = fit.maxDeviation;
+    }
+    const auto rs = [](const lc::biarc::Vec& p) { return RS_Vector(p.x, p.y); };
+    if (m_toPolyline) {
+        auto* pl = new RS_Polyline(parent);
+        for (const lc::biarc::Piece& pc : fit.pieces) {
+            pl->addVertex(rs(pc.start), pc.bulge()); // the bulge of the segment starting here
+        }
+        if (closed) {
+            pl->setClosed(true);
+            pl->endPolyline(); // closing segment: the last piece, with the bulge of the last vertex
+        } else {
+            pl->addVertex(rs(fit.pieces.back().end));
+        }
+        result.push_back(pl);
+    } else {
+        for (const lc::biarc::Piece& pc : fit.pieces) {
+            if (pc.arc) {
+                result.push_back(new RS_Arc(parent, RS_ArcData(rs(pc.center), pc.radius,
+                                                               RS_Math::correctAngle(pc.angle1),
+                                                               RS_Math::correctAngle(pc.angle1 + pc.sweep),
+                                                               pc.sweep < 0.)));
+            } else {
+                result.push_back(new RS_Line(parent, rs(pc.start), rs(pc.end)));
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<RS_Entity*> LC_ActionSplineExplode::exploded(const RS_Entity* e, RS_EntityContainer* parent,
+                                                         double* deviation) const {
+    if (deviation != nullptr) {
+        *deviation = 0.;
+    }
+    if (m_toArcs) {
+        return explodedToArcs(e, parent, deviation);
+    }
     std::vector<RS_Entity*> result;
     std::vector<RS_Vector> pts;
     bool closed = false;
@@ -135,7 +235,8 @@ std::vector<RS_Entity*> LC_ActionSplineExplode::exploded(const RS_Entity* e, RS_
 
 void LC_ActionSplineExplode::explodeEntity(RS_Entity* e) {
     RS_EntityContainer* parent = e->getParent() != nullptr ? e->getParent() : container;
-    std::vector<RS_Entity*> added = exploded(e, parent);
+    double deviation = 0.;
+    std::vector<RS_Entity*> added = exploded(e, parent, &deviation);
     if (added.empty()) {
         RS_DIALOGFACTORY->commandMessage(tr("This spline has too few points to explode."));
         return;
@@ -148,6 +249,25 @@ void LC_ActionSplineExplode::explodeEntity(RS_Entity* e) {
     replaceInDocument(document, parent, e, added, m_keepOriginals);
     graphicView->redraw(RS2::RedrawDrawing);
     RS_DIALOGFACTORY->updateSelectionWidget(container->countSelected(), container->totalSelectedLength());
+    if (m_toArcs) {
+        size_t arcs = 0;
+        size_t lines = 0;
+        const auto count = [&arcs, &lines](const RS_Entity* x) { ++(x->rtti() == RS2::EntityArc ? arcs : lines); };
+        for (RS_Entity* n : added) {
+            if (n->rtti() == RS2::EntityPolyline) {
+                for (RS_Entity* s : *static_cast<RS_Polyline*>(n)) {
+                    count(s);
+                }
+            } else {
+                count(n);
+            }
+        }
+        const QString dev = QString::number(deviation, 'g', 3);
+        RS_DIALOGFACTORY->commandMessage(
+            m_toPolyline ? tr("Spline exploded to a polyline of %1 arcs and %2 lines, deviation up to %3.").arg(arcs).arg(lines).arg(dev)
+                         : tr("Spline exploded to %1 arcs and %2 lines, deviation up to %3.").arg(arcs).arg(lines).arg(dev));
+        return;
+    }
     const size_t n = m_toPolyline ? static_cast<RS_Polyline*>(added.front())->count() : added.size();
     RS_DIALOGFACTORY->commandMessage(m_toPolyline ? tr("Spline exploded to a polyline of %1 segments.").arg(n)
                                                   : tr("Spline exploded to %1 lines.").arg(n));

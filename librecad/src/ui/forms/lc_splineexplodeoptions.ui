@@ -31,6 +31,36 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="cbArcs">
+     <property name="toolTip">
+      <string>If checked, the spline becomes arcs that join without corners (and straight pieces where it is straight), each within the tolerance of the spline - fewer pieces than lines, as a cutter wants them; otherwise straight lines.</string>
+     </property>
+     <property name="text">
+      <string>Arcs</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="lTolerance">
+     <property name="text">
+      <string>Tolerance:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="leTolerance">
+     <property name="maximumSize">
+      <size>
+       <width>80</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <property name="toolTip">
+      <string>Arcs: the largest distance allowed between the arcs and the spline, in drawing units. Smaller gives more arcs.</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QCheckBox" name="cbCustomSegments">
      <property name="toolTip">
       <string>If checked, use this number of line segments per control point (spline through points: per curve piece); otherwise the drawing setting $SPLINESEGS, which is what the screen shows.</string>
