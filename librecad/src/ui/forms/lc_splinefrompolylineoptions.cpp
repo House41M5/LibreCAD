@@ -29,6 +29,8 @@ LC_SplineFromPolylineOptions::LC_SplineFromPolylineOptions(QWidget* parent)
     connect(ui->sbDegree, QOverload<int>::of(&QSpinBox::valueChanged), this, &LC_SplineFromPolylineOptions::onDegreeChanged);
     connect(ui->sbMidPoints, QOverload<int>::of(&QSpinBox::valueChanged), this, &LC_SplineFromPolylineOptions::onMidPointsChanged);
     connect(ui->cbFitPoints, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onFitPointsClicked);
+    connect(ui->cbTolerance, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onToleranceClicked);
+    connect(ui->leTolerance, &QLineEdit::editingFinished, this, &LC_SplineFromPolylineOptions::onToleranceEditingFinished);
     connect(ui->cbKeepOriginals, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onKeepOriginalsClicked);
     connect(ui->cbCurrentLayer, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onCurrentLayerClicked);
     connect(ui->cbCurrentAttr, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onCurrentAttrClicked);
@@ -52,34 +54,65 @@ void LC_SplineFromPolylineOptions::doSetAction(RS_ActionInterface* a, bool updat
         return;
     }
     if (update) {
-        apply(action->getDegree(), action->getMidPoints(), action->isUseFitPoints(), action->isKeepOriginals(),
-              action->isUseCurrentLayer(), action->isUseCurrentAttributes());
-    } else {
-        apply(loadInt("Degree", 3), loadInt("MidPoints", 2), loadBool("UseFitPoints", true),
-              loadBool("KeepOriginals", false), loadBool("UseCurrentLayer", false), loadBool("UseCurrentAttributes", false));
+        apply(fromAction());
+        return;
     }
+    Values v;
+    v.degree = loadInt("Degree", 3);
+    v.midPoints = loadInt("MidPoints", 2);
+    v.fit = loadBool("UseFitPoints", true);
+    v.toleranceMode = loadBool("UseTolerance", false);
+    double tolerance = 0.01;
+    if (toDouble(load("Tolerance", "0.01"), tolerance, 0.01, true)) {
+        v.tolerance = tolerance;
+    }
+    v.keep = loadBool("KeepOriginals", false);
+    v.layer = loadBool("UseCurrentLayer", false);
+    v.attr = loadBool("UseCurrentAttributes", false);
+    apply(v);
 }
 
-void LC_SplineFromPolylineOptions::apply(int degree, int midPoints, bool fit, bool keep, bool layer, bool attr) {
-    degree = qBound(1, degree, 3);
-    midPoints = qBound(0, midPoints, 50);
+LC_SplineFromPolylineOptions::Values LC_SplineFromPolylineOptions::fromAction() const {
+    Values v;
+    v.degree = action->getDegree();
+    v.midPoints = action->getMidPoints();
+    v.fit = action->isUseFitPoints();
+    v.toleranceMode = action->isUseTolerance();
+    v.tolerance = action->getTolerance();
+    v.keep = action->isKeepOriginals();
+    v.layer = action->isUseCurrentLayer();
+    v.attr = action->isUseCurrentAttributes();
+    return v;
+}
+
+void LC_SplineFromPolylineOptions::apply(const Values& v) {
+    const int degree = qBound(1, v.degree, 3);
+    const int midPoints = qBound(0, v.midPoints, 50);
     action->setDegree(degree);
     action->setMidPoints(midPoints);
-    action->setUseFitPoints(fit);
-    action->setKeepOriginals(keep);
-    action->setUseCurrentLayer(layer);
-    action->setUseCurrentAttributes(attr);
+    action->setUseFitPoints(v.fit);
+    action->setUseTolerance(v.toleranceMode);
+    action->setTolerance(v.tolerance);
+    action->setKeepOriginals(v.keep);
+    action->setUseCurrentLayer(v.layer);
+    action->setUseCurrentAttributes(v.attr);
     {
         const QSignalBlocker b1(ui->sbDegree);
         const QSignalBlocker b2(ui->sbMidPoints);
         ui->sbDegree->setValue(degree);
         ui->sbMidPoints->setValue(midPoints);
     }
-    ui->cbFitPoints->setChecked(fit);
-    ui->cbFitPoints->setEnabled(degree == 2);
-    ui->cbKeepOriginals->setChecked(keep);
-    ui->cbCurrentLayer->setChecked(layer);
-    ui->cbCurrentAttr->setChecked(attr);
+    // Tolerance chooses the points itself: Mid Points and Through Vertices do not apply then
+    ui->lMidPoints->setEnabled(!v.toleranceMode);
+    ui->sbMidPoints->setEnabled(!v.toleranceMode);
+    ui->cbFitPoints->setChecked(v.fit);
+    ui->cbFitPoints->setEnabled(degree == 2 && !v.toleranceMode);
+    ui->cbTolerance->setChecked(v.toleranceMode);
+    ui->leTolerance->setText(fromDouble(action->getTolerance())); // as raised to the minimum
+    ui->leTolerance->setEnabled(v.toleranceMode);
+    ui->cbKeepOriginals->setChecked(v.keep);
+    ui->cbCurrentLayer->setChecked(v.layer);
+    ui->cbCurrentAttr->setChecked(v.attr);
 }
 
 void LC_SplineFromPolylineOptions::doSaveSettings() {
@@ -89,6 +122,8 @@ void LC_SplineFromPolylineOptions::doSaveSettings() {
     save("Degree", action->getDegree());
     save("MidPoints", action->getMidPoints());
     save("UseFitPoints", action->isUseFitPoints());
+    save("UseTolerance", action->isUseTolerance());
+    save("Tolerance", fromDouble(action->getTolerance()));
     save("KeepOriginals", action->isKeepOriginals());
     save("UseCurrentLayer", action->isUseCurrentLayer());
     save("UseCurrentAttributes", action->isUseCurrentAttributes());
@@ -97,7 +132,7 @@ void LC_SplineFromPolylineOptions::doSaveSettings() {
 void LC_SplineFromPolylineOptions::onDegreeChanged(int value) {
     if (action != nullptr) {
         action->setDegree(value);
-        ui->cbFitPoints->setEnabled(value == 2);
+        ui->cbFitPoints->setEnabled(value == 2 && !action->isUseTolerance());
     }
 }
 
@@ -111,6 +146,25 @@ void LC_SplineFromPolylineOptions::onFitPointsClicked(bool value) {
     if (action != nullptr) {
         action->setUseFitPoints(value);
     }
+}
+
+void LC_SplineFromPolylineOptions::onToleranceClicked(bool value) {
+    if (action != nullptr) {
+        Values v = fromAction();
+        v.toleranceMode = value;
+        apply(v);
+    }
+}
+
+void LC_SplineFromPolylineOptions::onToleranceEditingFinished() {
+    if (action == nullptr) {
+        return;
+    }
+    double tolerance = action->getTolerance();
+    if (toDouble(ui->leTolerance->text(), tolerance, 0.01, true)) {
+        action->setTolerance(tolerance);
+    }
+    ui->leTolerance->setText(fromDouble(action->getTolerance()));
 }
 
 void LC_SplineFromPolylineOptions::onKeepOriginalsClicked(bool value) {

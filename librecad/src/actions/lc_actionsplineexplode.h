@@ -36,6 +36,11 @@
  * Arcs mode (step 21, not in master): the spline becomes tangent-continuous arcs within a tolerance
  * (lc_biarcfit.h), like AutoCAD with PLINECONVERTMODE=1 - fewer pieces than lines and no corners for a
  * cutter to stop at. Off by default, as PLINECONVERTMODE is 0 by default.
+ * Tolerance mode of spline from polyline (step 22, not in master): Mid Points puts 3 control points per
+ * segment by default, which the user found to be many; with Tolerance on, lc_splinefit.h finds few
+ * control points that stay within the tolerance of the polyline both ways, corners kept sharp. Off by
+ * default so the command keeps working as before. The fit runs once per polyline and options (cached),
+ * not on every mouse move of the preview.
  */
 #ifndef LC_ACTIONSPLINEEXPLODE_H
 #define LC_ACTIONSPLINEEXPLODE_H
@@ -127,6 +132,14 @@ public:
     void setUseCurrentLayer(bool b) { m_useCurrentLayer = b; }
     bool isUseCurrentAttributes() const { return m_useCurrentAttributes; }
     void setUseCurrentAttributes(bool b) { m_useCurrentAttributes = b; }
+    bool isUseTolerance() const { return m_useTolerance; }
+    void setUseTolerance(bool b) { m_useTolerance = b; }
+    double getTolerance() const { return m_tolerance; }
+    /** Negative counts as positive, below kMinTolerance is raised to it, not finite falls back to 0.01. */
+    void setTolerance(double t);
+    static constexpr double kMinTolerance = 1e-6;
+    /** Tolerance mode: polylines with more segments get no preview on hover (fitted on the click). */
+    static constexpr unsigned kPreviewSegments = 1000;
 
     /** Polyline vertices plus m_midPoints points inside each segment (closed: last == first dropped). */
     static std::vector<RS_Vector> pointsFromPolyline(const RS_Polyline* polyline, int midPoints);
@@ -135,6 +148,21 @@ protected:
     void createOptionsWidget() override;
 
 private:
+    /** Tolerance mode: the last fit, kept while the same polyline and options come back. */
+    struct Fitted {
+        const RS_Polyline* polyline = nullptr;
+        unsigned count = 0;
+        RS_Vector start{false};
+        RS_Vector end{false};
+        double length = 0.;
+        int degree = 0;
+        double tolerance = 0.;
+        std::vector<RS_Vector> control;
+        bool closed = false;
+        double deviation = 0.;
+        bool reached = false;
+    };
+    const Fitted& fitted(const RS_Polyline* polyline) const;
     /** The spline for the polyline (not in the document), nullptr when there are too few points. */
     RS_Entity* splineFor(const RS_Polyline* polyline, RS_EntityContainer* parent) const;
     void convert(RS_Polyline* polyline);
@@ -145,6 +173,9 @@ private:
     bool m_keepOriginals = false;
     bool m_useCurrentLayer = false;
     bool m_useCurrentAttributes = false;
+    bool m_useTolerance = false;
+    double m_tolerance = 0.01;
+    mutable Fitted m_fitted;
 };
 
 #endif

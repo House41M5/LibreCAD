@@ -71,6 +71,29 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="cbTolerance">
+     <property name="toolTip">
+      <string>If checked, the spline gets as few control points as it can while staying within the tolerance of the polyline (both ways); corners stay sharp. Otherwise every vertex plus the mid points becomes a point.</string>
+     </property>
+     <property name="text">
+      <string>Tolerance:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="leTolerance">
+     <property name="maximumSize">
+      <size>
+       <width>80</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <property name="toolTip">
+      <string>Tolerance: the largest distance allowed between the spline and the polyline, in drawing units. Smaller gives more control points; below the polyline's own corners it gives more than the polyline has.</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QCheckBox" name="cbKeepOriginals">
      <property name="toolTip">
       <string>If checked, the original entity stays; otherwise it is removed.</string>

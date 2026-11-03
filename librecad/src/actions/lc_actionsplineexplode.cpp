@@ -35,6 +35,7 @@
 
 #include "lc_biarcfit.h"
 #include "lc_splineexplodeoptions.h"
+#include "lc_splinefit.h"
 #include "lc_splinefrompolylineoptions.h"
 #include "lc_splinepoints.h"
 #include "lc_splinestroke.h"
@@ -329,6 +330,80 @@ LC_ActionSplineFromPolyline::LC_ActionSplineFromPolyline(RS_EntityContainer& con
 void LC_ActionSplineFromPolyline::init(int status) {
     RS_PreviewActionInterface::init(status);
     deletePreview();
+    m_fitted = Fitted{};
+}
+
+void LC_ActionSplineFromPolyline::setTolerance(double t) {
+    m_tolerance = std::isfinite(t) ? std::max(std::abs(t), kMinTolerance) : 0.01;
+}
+
+namespace {
+
+/** The polyline for lc::splinefit: its vertices (flag 1) and its arcs as points at most tol/20 off (flag 0). */
+void fitInput(const RS_Polyline* polyline, double tol, std::vector<lc::splinefit::Vec>& pts, std::vector<char>& vertex) {
+    auto add = [&](const RS_Vector& v, char f) {
+        pts.emplace_back(v.x, v.y);
+        vertex.push_back(f);
+    };
+    add(polyline->getStartpoint(), 1);
+    for (RS_Entity* e : *const_cast<RS_Polyline*>(polyline)) { // the container has no const iteration
+        if (e == nullptr || !e->isAtomic()) {
+            continue;
+        }
+        if (e->rtti() == RS2::EntityArc) {
+            const auto* arc = static_cast<const RS_Arc*>(e);
+            const double a1 = arc->getAngle1();
+            const bool reversed = arc->isReversed();
+            const double r = arc->getRadius();
+            double da = reversed ? std::fmod(a1 - arc->getAngle2() + 2. * M_PI, 2. * M_PI)
+                                 : std::fmod(arc->getAngle2() - a1 + 2. * M_PI, 2. * M_PI);
+            if (da < RS_TOLERANCE) {
+                da = 2. * M_PI;
+            }
+            // sagitta r (1 - cos(step / 2)) <= tol / 20
+            double step = da;
+            const double c = 1. - tol / (20. * r);
+            if (c > -1. && c < 1.) {
+                step = 2. * std::acos(c);
+            }
+            const int parts = std::clamp(int(std::ceil(da / step)), 1, 4096);
+            for (int i = 1; i < parts; ++i) {
+                const double t = da * i / parts;
+                add(arc->getCenter().relative(r, reversed ? a1 - t : a1 + t), 0);
+            }
+        }
+        add(e->getEndpoint(), 1);
+    }
+}
+
+} // namespace
+
+const LC_ActionSplineFromPolyline::Fitted& LC_ActionSplineFromPolyline::fitted(const RS_Polyline* polyline) const {
+    Fitted& f = m_fitted;
+    if (f.polyline == polyline && f.count == polyline->count() && f.start == polyline->getStartpoint() &&
+        f.end == polyline->getEndpoint() && f.length == polyline->getLength() && f.degree == m_degree &&
+        f.tolerance == m_tolerance && f.closed == polyline->isClosed()) {
+        return f;
+    }
+    std::vector<lc::splinefit::Vec> pts;
+    std::vector<char> vertex;
+    fitInput(polyline, m_tolerance, pts, vertex);
+    const lc::splinefit::Result r = lc::splinefit::fit(pts, vertex, polyline->isClosed(), m_degree, m_tolerance);
+    f = Fitted{};
+    f.polyline = polyline;
+    f.count = polyline->count();
+    f.start = polyline->getStartpoint();
+    f.end = polyline->getEndpoint();
+    f.length = polyline->getLength();
+    f.degree = m_degree;
+    f.tolerance = m_tolerance;
+    f.closed = polyline->isClosed();
+    for (const lc::splinefit::Vec& v : r.control) {
+        f.control.emplace_back(v.x, v.y);
+    }
+    f.deviation = r.maxDeviation;
+    f.reached = r.reached;
+    return f;
 }
 
 std::vector<RS_Vector> LC_ActionSplineFromPolyline::pointsFromPolyline(const RS_Polyline* polyline, int midPoints) {
@@ -376,6 +451,18 @@ std::vector<RS_Vector> LC_ActionSplineFromPolyline::pointsFromPolyline(const RS_
 
 RS_Entity* LC_ActionSplineFromPolyline::splineFor(const RS_Polyline* polyline, RS_EntityContainer* parent) const {
     const bool closed = polyline->isClosed();
+    if (m_useTolerance) {
+        const Fitted& f = fitted(polyline);
+        if (f.control.size() < 3) {
+            return nullptr;
+        }
+        auto* s = new RS_Spline(parent, RS_SplineData(std::clamp(m_degree, 1, 3), closed));
+        for (const RS_Vector& p : f.control) {
+            s->addControlPoint(p);
+        }
+        s->update();
+        return s;
+    }
     const std::vector<RS_Vector> pts = pointsFromPolyline(polyline, m_midPoints);
     if (m_useFitPoints && m_degree == 2) {
         if (pts.size() < 3) {
@@ -408,10 +495,23 @@ void LC_ActionSplineFromPolyline::convert(RS_Polyline* polyline) {
         RS_DIALOGFACTORY->commandMessage(tr("This polyline has too few points for a spline of degree %1.").arg(m_degree));
         return;
     }
+    QString done;
+    if (m_useTolerance) { // before the polyline leaves the document
+        const Fitted& f = fitted(polyline);
+        const unsigned vertices = polyline->count() + (polyline->isClosed() ? 0 : 1);
+        done = f.reached ? tr("Spline of %1 control points for %2 polyline vertices, deviation up to %3.")
+                               .arg(f.control.size()).arg(vertices).arg(f.deviation, 0, 'g', 3)
+                         : tr("Tolerance %1 not reached: spline of %2 control points, deviation up to %3. "
+                              "A larger tolerance gives fewer points.")
+                               .arg(f.tolerance, 0, 'g', 3).arg(f.control.size()).arg(f.deviation, 0, 'g', 3);
+    }
     s->reparent(parent);
     applyPenAndLayer(polyline, s, m_useCurrentLayer, m_useCurrentAttributes);
     deletePreview();
     replaceInDocument(document, parent, polyline, {s}, m_keepOriginals);
+    if (!done.isEmpty()) {
+        RS_DIALOGFACTORY->commandMessage(done);
+    }
     graphicView->redraw(RS2::RedrawDrawing);
     RS_DIALOGFACTORY->updateSelectionWidget(container->countSelected(), container->totalSelectedLength());
 }
@@ -419,7 +519,12 @@ void LC_ActionSplineFromPolyline::convert(RS_Polyline* polyline) {
 void LC_ActionSplineFromPolyline::mouseMoveEvent(QMouseEvent* e) {
     deletePreview();
     auto* pl = static_cast<RS_Polyline*>(catchEntity(e, RS2::EntityPolyline));
-    if (pl != nullptr) {
+    // Tolerance mode fits on hover only up to kPreviewSegments (test spirals: 1000 points 0.4 s, 3000 points
+    // 4.6 s before the knot removal budget was halved, 5000 points 2.6 s after): a bigger polyline is fitted on
+    // the click, so moving the mouse does not freeze the window
+    const bool fitNow = !m_useTolerance || pl == nullptr || pl->count() <= kPreviewSegments ||
+                        m_fitted.polyline == pl;
+    if (pl != nullptr && fitNow) {
         if (RS_Entity* s = splineFor(pl, preview.get())) {
             preview->addEntity(s);
         }

@@ -20,6 +20,7 @@
 // Context: tool options of the spline-from-polyline action (lc_actionsplineexplode.h), 2026-11-02 step 20.
 // Settings: /Draw/SplineFromPolyline*. "Through Vertices" only means something with degree 2
 // (LC_SplinePoints); this branch's RS_Spline has no fit points, so the box is disabled otherwise.
+// Tolerance (step 22) replaces Mid Points and Through Vertices while it is on, so those are disabled then.
 #ifndef LC_SPLINEFROMPOLYLINEOPTIONS_H
 #define LC_SPLINEFROMPOLYLINEOPTIONS_H
 
@@ -47,12 +48,25 @@ protected slots:
     void onDegreeChanged(int value);
     void onMidPointsChanged(int value);
     void onFitPointsClicked(bool value);
+    void onToleranceClicked(bool value);
+    void onToleranceEditingFinished();
     void onKeepOriginalsClicked(bool value);
     void onCurrentLayerClicked(bool value);
     void onCurrentAttrClicked(bool value);
 
 private:
-    void apply(int degree, int midPoints, bool fit, bool keep, bool layer, bool attr);
+    struct Values {
+        int degree = 3;
+        int midPoints = 2;
+        bool fit = true;
+        bool toleranceMode = false;
+        double tolerance = 0.01;
+        bool keep = false;
+        bool layer = false;
+        bool attr = false;
+    };
+    Values fromAction() const;
+    void apply(const Values& v);
     Ui::LC_SplineFromPolylineOptions* ui;
     LC_ActionSplineFromPolyline* action = nullptr;
 };
