@@ -35,6 +35,13 @@
  * Corners (turn > kCornerAngle, the angle of the vx Arcs biarc fit) stay sharp: the `degree` control points
  * that are non-zero at that knot are all the vertex, so the curve passes through it and is straight on both
  * sides. A piece between two corners keeps at least `degree` spans so the blocks never overlap.
+ * Points on the polyline (fitOnPolyline; step 23, the user wanted the points on the line they drew): the same
+ * spans, halving and removal, but no least squares - every free control point sits on the polyline at its
+ * Greville abscissa (the mean of its p inner knots) carried to length along the polyline through the
+ * breakpoints, and a bent vertex within half the gap to both neighbours pulls the nearest point onto itself.
+ * The curve then stays inside every bend by about h^2 k / 6 (cubic, h = point spacing, k = curvature), so it
+ * takes more points: Python trials at 0.01, a 201-point polyline from a real spline 5 -> 53, a 1500-point
+ * spiral 78 -> 251, an L or a rectangle the same (corners only).
  * Gotchas:
  *  - A tolerance below the polyline's own corners (a dense polyline from vx) cannot be met with fewer
  *    points than the polyline has: the curve has to hug every chord. maxDeviation and `reached` say so and
@@ -174,6 +181,7 @@ public:
     }
     int count() const { return m_n; }
     int degree() const { return m_p; }
+    double knot(int j) const { return m_U[j]; }
     int spans() const { return m_m; }
     bool closed() const { return m_closed; }
 
@@ -525,6 +533,7 @@ struct Data {
     std::vector<char> corner;
     double length = 0.;
     double eps = 0.;
+    std::vector<char> bent; ///< the polyline turns here but less than a corner: fitOnPolyline snaps points to it
 };
 
 /** Dedupes, finds corners, rotates a closed polyline to its first corner, and subdivides every chord. */
@@ -574,8 +583,9 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
     }
     std::vector<char> corner(n, 0);
     std::vector<double> bend(n, 0.); // where the refinement towards a bent vertex starts; 0 = none
+    std::vector<char> bent(n, 0);    // any turn that is no corner, arc points included (Data::bent)
     for (size_t i = 0; i < n; ++i) {
-        if (!vtx[i] || (!closed && (i == 0 || i + 1 == n))) {
+        if (!closed && (i == 0 || i + 1 == n)) {
             continue;
         }
         const Vec a = pts[(i + n - 1) % n];
@@ -583,8 +593,11 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
         const Vec din = pts[i] - a;
         const Vec dout = c - pts[i];
         const double turn = std::atan2(std::abs(din.cross(dout)), din.dot(dout));
-        corner[i] = turn > kCornerAngle;
-        bend[i] = turn > 1e-6 ? std::max(tol / 4., 2. * tol / turn) : 0.;
+        if (vtx[i]) {
+            corner[i] = turn > kCornerAngle;
+            bend[i] = turn > 1e-6 ? std::max(tol / 4., 2. * tol / turn) : 0.;
+        }
+        bent[i] = char(!corner[i] && turn > 1e-6);
     }
     if (closed) {
         const auto it = std::find(corner.begin(), corner.end(), 1);
@@ -593,6 +606,7 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
             std::rotate(pts.begin(), pts.begin() + r, pts.end());
             std::rotate(corner.begin(), corner.begin() + r, corner.end());
             std::rotate(bend.begin(), bend.begin() + r, bend.end());
+            std::rotate(bent.begin(), bent.begin() + r, bent.end());
         }
     }
     double total = 0.;
@@ -611,6 +625,7 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
         d.q.push_back(a);
         d.s.push_back(s);
         d.corner.push_back(corner[i]);
+        d.bent.push_back(bent[i]);
         fr.clear();
         // at least 4 parts: the data -> curve check only sees these points, and on a dense polyline the curve
         // is farthest from a chord near its middle (with 1 part the fit said 0.00465 where it was 0.00605)
@@ -636,6 +651,7 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
                 d.q.push_back(a + (b - a) * f);
                 d.s.push_back(s + len * f);
                 d.corner.push_back(0);
+                d.bent.push_back(0);
                 last = f;
             }
         }
@@ -645,6 +661,7 @@ inline bool prepare(const std::vector<Vec>& input, const std::vector<char>& vert
         d.q.push_back(pts[n - 1]);
         d.s.push_back(s);
         d.corner.push_back(0);
+        d.bent.push_back(0);
     }
     d.length = s;
     return s > 0.;
@@ -742,17 +759,112 @@ inline void reparametrize(const Curve& cv, const std::vector<Vec>& P, const Data
     }
 }
 
-} // namespace detail
+/** The point at length x along the polyline (closed: wraps), exactly a data point where x is its length. */
+inline Vec pointAt(const Data& d, bool closed, double x) {
+    const int N = int(d.q.size());
+    const double L = d.length;
+    if (closed) {
+        x = std::fmod(x, L);
+        if (x < 0.) {
+            x += L;
+        }
+    } else {
+        x = std::clamp(x, 0., L);
+    }
+    int j = int(std::upper_bound(d.s.begin(), d.s.end(), x) - d.s.begin()) - 1;
+    j = std::clamp(j, 0, closed ? N - 1 : N - 2);
+    const int j1 = (j + 1) % N;
+    const double seg = (j + 1 < N ? d.s[j + 1] : L) - d.s[j];
+    const double f = seg > 0. ? std::clamp((x - d.s[j]) / seg, 0., 1.) : 0.;
+    return f <= 0. ? d.q[j] : (f >= 1. ? d.q[j1] : d.q[j] + (d.q[j1] - d.q[j]) * f);
+}
 
 /**
- * Fits a spline of `degree` (1..3) to the polyline through `pts` (closed: no repeated first point needed).
- * `vertex[i]` marks real polyline vertices (corner candidates); points between them, such as an arc
- * sampled by the caller, have 0. An empty `vertex` makes every point a vertex. The result has no control
- * points when the polyline has too few distinct points.
+ * fitOnPolyline: the free control points onto the polyline. Point i goes to its Greville abscissa (the mean of
+ * knots i+1..i+p), carried to length along the polyline through the breakpoints b. Then each bent vertex
+ * pulls the nearest free point onto itself when it lies within half the gap to both of that point's
+ * neighbours (the nearest such vertex wins), so the points stay in order along the polyline.
  */
-inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, bool closed, int degree,
-                  double tolerance, std::size_t maxControl = 4096) {
-    using namespace detail;
+inline void placeOnPolyline(const Curve& cv, const Data& d, const std::vector<double>& b,
+                            const std::vector<char>& fixed, std::vector<Vec>& P) {
+    const int n = cv.count();
+    const int p = cv.degree();
+    const int m = cv.spans();
+    const bool closed = cv.closed();
+    const double L = d.length;
+    std::vector<double> x(n);
+    for (int i = 0; i < n; ++i) {
+        double g = 0.;
+        for (int a = 1; a <= p; ++a) {
+            g += cv.knot(i + a);
+        }
+        g = cv.wrap(g / p);
+        const int k = std::clamp(int(std::floor(g)), 0, m - 1);
+        x[i] = b[k] + (g - k) * (b[k + 1] - b[k]);
+    }
+    // sorted by length for the nearest-point search (closed: the first points wrap to the end)
+    std::vector<int> order(n);
+    for (int i = 0; i < n; ++i) {
+        order[i] = i;
+    }
+    std::sort(order.begin(), order.end(), [&](int a, int c) { return x[a] < x[c]; });
+    std::vector<double> xs(n);
+    for (int i = 0; i < n; ++i) {
+        xs[i] = x[order[i]];
+    }
+    std::vector<double> to(x);
+    std::vector<double> claim(n, std::numeric_limits<double>::infinity());
+    for (size_t j = 0; j < d.q.size(); ++j) {
+        if (!d.bent[j]) {
+            continue;
+        }
+        const double sv = d.s[j];
+        const int at = int(std::lower_bound(xs.begin(), xs.end(), sv) - xs.begin());
+        int i = -1;
+        double dist = std::numeric_limits<double>::infinity();
+        for (int c = at - 1; c <= at; ++c) {
+            int cc = c;
+            if (closed) {
+                cc = (c + n) % n;
+            } else if (c < 0 || c >= n) {
+                continue;
+            }
+            double dd = std::abs(x[order[cc]] - sv);
+            if (closed) {
+                dd = std::min(dd, L - dd);
+            }
+            if (dd < dist) {
+                dist = dd;
+                i = order[cc];
+            }
+        }
+        if (i < 0 || fixed[i]) {
+            continue;
+        }
+        double gl = 0.;
+        double gh = 0.;
+        if (closed) {
+            gl = std::fmod(x[i] - x[(i + n - 1) % n] + 2. * L, L);
+            gh = std::fmod(x[(i + 1) % n] - x[i] + 2. * L, L);
+        } else {
+            gl = i > 0 ? x[i] - x[i - 1] : 0.;
+            gh = i + 1 < n ? x[i + 1] - x[i] : 0.;
+        }
+        if (dist < 0.5 * std::min(gl, gh) && dist < claim[i]) {
+            claim[i] = dist;
+            to[i] = sv;
+        }
+    }
+    for (int i = 0; i < n; ++i) {
+        if (!fixed[i]) {
+            P[i] = pointAt(d, closed, to[i]);
+        }
+    }
+}
+
+/** fit() and fitOnPolyline(): onPolyline places the free control points on the polyline (placeOnPolyline). */
+inline Result fitImpl(const std::vector<Vec>& pts, const std::vector<char>& vertex, bool closed, int degree,
+                      double tolerance, std::size_t maxControl, bool onPolyline) {
     Result res;
     const int p = std::clamp(degree, 1, 3);
     res.degree = p;
@@ -827,9 +939,10 @@ inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, 
         std::vector<double> err; // per span
         double maxErr = std::numeric_limits<double>::infinity();
     };
-    // One fit at the breakpoints b: least squares and length parameters twice, then the error per span both
-    // ways. u comes in as the parameters to start from and goes out as the length parameters of the fit.
-    auto evaluate = [&](const std::vector<char>& bfix, std::vector<double>& u) {
+    // One fit at the breakpoints bb: least squares and length parameters twice (onPolyline: the points on the
+    // polyline, then the length parameters once), then the error per span both ways. u comes in as the
+    // parameters to start from and goes out as the length parameters of the fit.
+    auto evaluate = [&](const std::vector<double>& bb, const std::vector<char>& bfix, std::vector<double>& u) {
         Round r;
         const int m = int(bfix.size()) - 1;
         const Curve cv(p, closed, m);
@@ -858,11 +971,16 @@ inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, 
                 }
             }
         }
-        for (int pass = 0; pass < 2; ++pass) {
-            if (!leastSquares(cv, d, u, fixed, P)) {
-                return r;
-            }
+        if (onPolyline) {
+            placeOnPolyline(cv, d, bb, fixed, P);
             reparametrize(cv, P, d, piece, bounds, ub, kSamples, u);
+        } else {
+            for (int pass = 0; pass < 2; ++pass) {
+                if (!leastSquares(cv, d, u, fixed, P)) {
+                    return r;
+                }
+                reparametrize(cv, P, d, piece, bounds, ub, kSamples, u);
+            }
         }
         // data -> curve (Newton from the length parameter), curve -> polyline
         std::vector<double> err(m, 0.);
@@ -947,7 +1065,7 @@ inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, 
     const double minSpan = std::max(10. * d.eps, tolerance * 1e-3);
     for (int round = 0; round < 64; ++round) {
         const int m = int(b.size()) - 1;
-        Round r = evaluate(bfix, u);
+        Round r = evaluate(b, bfix, u);
         if (!r.ok) {
             LC_SPLINEFIT_TRACE("  round %d: solve failed\n", round);
             break;
@@ -1094,14 +1212,16 @@ inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, 
             }
             std::vector<char> nf(bfix);
             nf.erase(nf.begin() + k);
+            std::vector<double> nb(b);
+            nb.erase(nb.begin() + k);
             std::vector<double> uu(u);
             for (double& v : uu) {
                 v = v >= k + 1 ? v - 1. : (v >= k - 1 ? (k - 1) + (v - (k - 1)) / 2. : v);
             }
             ++tries;
-            Round r = evaluate(nf, uu);
+            Round r = evaluate(nb, nf, uu);
             if (r.ok && r.maxErr <= tolerance) {
-                b.erase(b.begin() + k);
+                b.swap(nb);
                 bfix.swap(nf);
                 u.swap(uu);
                 best = std::move(r);
@@ -1133,6 +1253,28 @@ inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, 
     res.maxDeviation = bestErr;
     res.reached = bestErr <= tolerance;
     return res;
+}
+
+} // namespace detail
+
+/**
+ * Fits a spline of `degree` (1..3) to the polyline through `pts` (closed: no repeated first point needed).
+ * `vertex[i]` marks real polyline vertices (corner candidates); points between them, such as an arc
+ * sampled by the caller, have 0. An empty `vertex` makes every point a vertex. The result has no control
+ * points when the polyline has too few distinct points.
+ */
+inline Result fit(const std::vector<Vec>& pts, const std::vector<char>& vertex, bool closed, int degree,
+                  double tolerance, std::size_t maxControl = 4096) {
+    return detail::fitImpl(pts, vertex, closed, degree, tolerance, maxControl, false);
+}
+
+/**
+ * As fit(), but every control point lies on the polyline - on the chords between `pts` - so the points the
+ * user picks stay on the line they drew. Costs more points for the same tolerance (see the header).
+ */
+inline Result fitOnPolyline(const std::vector<Vec>& pts, const std::vector<char>& vertex, bool closed, int degree,
+                            double tolerance, std::size_t maxControl = 4096) {
+    return detail::fitImpl(pts, vertex, closed, degree, tolerance, maxControl, true);
 }
 
 } // namespace splinefit

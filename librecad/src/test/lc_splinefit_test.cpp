@@ -4,6 +4,8 @@
  * How: every result is drawn the way RS_Spline draws it (a copy of rbasis/knot/knotu, closed = first
  * `degree` points wrapped) and measured both ways against the input polyline with its own distance code,
  * not the fit's. Corners must lie on the curve, open ends must be the polyline's ends exactly.
+ * Every case runs twice: fit() and fitOnPolyline() (step 23), the second also checking that every control
+ * point lies on the polyline.
  * Gotchas: the "dense sine 40" cases have corners of their own (chords of a coarse curve), so a small
  * tolerance there needs more points than the polyline - that is expected and printed, not a failure.
  */
@@ -21,6 +23,13 @@ using lc::splinefit::Vec;
 namespace {
 
 int g_fail = 0;
+bool g_onPolyline = false; // cases() runs once per mode
+
+lc::splinefit::Result fitAny(const std::vector<Vec>& pts, const std::vector<char>& vertex, bool closed, int degree,
+                             double tol) {
+    return g_onPolyline ? lc::splinefit::fitOnPolyline(pts, vertex, closed, degree, tol)
+                        : lc::splinefit::fit(pts, vertex, closed, degree, tol);
+}
 
 void check(bool ok, const std::string& what) {
     if (!ok) {
@@ -235,10 +244,10 @@ struct Case {
 /** Fits, draws like RS_Spline, measures both ways; returns the control count (0 = none). */
 size_t run(const Case& c, int degree, double tol, long expectCount = -1, bool mustReach = true) {
     const auto t0 = std::chrono::steady_clock::now();
-    const auto r = lc::splinefit::fit(c.pts, c.vertex, c.closed, degree, tol);
+    const auto r = fitAny(c.pts, c.vertex, c.closed, degree, tol);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-    std::printf("  %-34s p=%d tol=%-6g -> %4zu control (polyline %zu points)", c.name.c_str(), degree, tol,
-                r.control.size(), c.pts.size());
+    std::printf("  %s %-34s p=%d tol=%-6g -> %4zu control (polyline %zu points)", g_onPolyline ? "on " : "lsq",
+                c.name.c_str(), degree, tol, r.control.size(), c.pts.size());
     if (r.control.empty()) {
         std::printf("\n");
         check(false, "no control points");
@@ -293,6 +302,13 @@ size_t run(const Case& c, int degree, double tol, long expectCount = -1, bool mu
         }
         check(!wrapped, "closed control points look wrapped to RS_Spline");
     }
+    if (g_onPolyline) {
+        double off = 0.;
+        for (const Vec& v : r.control) {
+            off = std::max(off, poly.dist(v) / (1. + v.norm()));
+        }
+        check(off <= 1e-12, "control point off the polyline (relative " + std::to_string(off) + ")");
+    }
     // corners lie on the curve
     const size_t n = c.pts.size();
     for (size_t i = 0; i < n; ++i) {
@@ -301,7 +317,10 @@ size_t run(const Case& c, int degree, double tol, long expectCount = -1, bool mu
         }
         const Vec din = c.pts[i] - c.pts[(i + n - 1) % n];
         const Vec dout = c.pts[(i + 1) % n] - c.pts[i];
-        if (din.norm() == 0. || dout.norm() == 0.) {
+        // a seam a rounding error long is no corner: the fit merges its ends (prepare's eps), and the "far, seam
+        // gap" case turns only 2 pi / 256 there - lsq passed by luck, the closeness limit scaling with 3.4e6
+        const double eps = 1e-9 * (1. + c.pts[i].norm());
+        if (din.norm() <= eps || dout.norm() <= eps) {
             continue;
         }
         if (std::atan2(std::abs(din.cross(dout)), din.dot(dout)) > lc::splinefit::kCornerAngle + 1e-9) {
@@ -337,10 +356,7 @@ Case polygon(int sides, double r, Vec center = {0., 0.}, double gap = 0.) {
     return c;
 }
 
-} // namespace
-
-int main() {
-    std::printf("lc_splinefit test\n");
+void cases() {
     {
         Case c;
         c.name = "straight 2 points";
@@ -448,14 +464,24 @@ int main() {
         // degenerate inputs: no control points, no crash
         std::printf("  degenerate inputs\n");
         const std::vector<char> none;
-        check(lc::splinefit::fit({}, none, false, 3, 0.01).control.empty(), "empty");
-        check(lc::splinefit::fit({{1., 1.}}, none, false, 3, 0.01).control.empty(), "one point");
-        check(lc::splinefit::fit({{1., 1.}, {1., 1.}}, none, false, 3, 0.01).control.empty(), "two equal points");
-        check(lc::splinefit::fit({{0., 0.}, {1., 1.}}, none, true, 3, 0.01).control.empty(), "closed 2 points");
-        check(lc::splinefit::fit({{0., 0.}, {1., 1.}, {0., 0.}}, none, true, 3, 0.01).control.empty(),
-              "closed back and forth");
-        const auto r = lc::splinefit::fit({{0., 0.}, {1., 0.}, {1., 1.}}, none, false, 3, -1.);
+        check(fitAny({}, none, false, 3, 0.01).control.empty(), "empty");
+        check(fitAny({{1., 1.}}, none, false, 3, 0.01).control.empty(), "one point");
+        check(fitAny({{1., 1.}, {1., 1.}}, none, false, 3, 0.01).control.empty(), "two equal points");
+        check(fitAny({{0., 0.}, {1., 1.}}, none, true, 3, 0.01).control.empty(), "closed 2 points");
+        check(fitAny({{0., 0.}, {1., 1.}, {0., 0.}}, none, true, 3, 0.01).control.empty(), "closed back and forth");
+        const auto r = fitAny({{0., 0.}, {1., 0.}, {1., 1.}}, none, false, 3, -1.);
         check(!r.control.empty(), "bad tolerance falls back to 0.01");
+    }
+}
+
+} // namespace
+
+int main() {
+    std::printf("lc_splinefit test\n");
+    for (bool on : {false, true}) {
+        g_onPolyline = on;
+        std::printf(on ? "fitOnPolyline\n" : "fit\n");
+        cases();
     }
     std::printf(g_fail == 0 ? "ALL PASS\n" : "FAILURES: %d\n", g_fail);
     return g_fail == 0 ? 0 : 1;

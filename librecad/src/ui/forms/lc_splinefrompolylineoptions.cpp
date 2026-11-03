@@ -31,6 +31,7 @@ LC_SplineFromPolylineOptions::LC_SplineFromPolylineOptions(QWidget* parent)
     connect(ui->cbFitPoints, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onFitPointsClicked);
     connect(ui->cbTolerance, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onToleranceClicked);
     connect(ui->leTolerance, &QLineEdit::editingFinished, this, &LC_SplineFromPolylineOptions::onToleranceEditingFinished);
+    connect(ui->cbOnPolyline, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onOnPolylineClicked);
     connect(ui->cbKeepOriginals, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onKeepOriginalsClicked);
     connect(ui->cbCurrentLayer, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onCurrentLayerClicked);
     connect(ui->cbCurrentAttr, &QCheckBox::clicked, this, &LC_SplineFromPolylineOptions::onCurrentAttrClicked);
@@ -66,6 +67,7 @@ void LC_SplineFromPolylineOptions::doSetAction(RS_ActionInterface* a, bool updat
     if (toDouble(load("Tolerance", "0.01"), tolerance, 0.01, true)) {
         v.tolerance = tolerance;
     }
+    v.onPolyline = loadBool("OnPolyline", false);
     v.keep = loadBool("KeepOriginals", false);
     v.layer = loadBool("UseCurrentLayer", false);
     v.attr = loadBool("UseCurrentAttributes", false);
@@ -79,6 +81,7 @@ LC_SplineFromPolylineOptions::Values LC_SplineFromPolylineOptions::fromAction() 
     v.fit = action->isUseFitPoints();
     v.toleranceMode = action->isUseTolerance();
     v.tolerance = action->getTolerance();
+    v.onPolyline = action->isOnPolyline();
     v.keep = action->isKeepOriginals();
     v.layer = action->isUseCurrentLayer();
     v.attr = action->isUseCurrentAttributes();
@@ -93,6 +96,7 @@ void LC_SplineFromPolylineOptions::apply(const Values& v) {
     action->setUseFitPoints(v.fit);
     action->setUseTolerance(v.toleranceMode);
     action->setTolerance(v.tolerance);
+    action->setOnPolyline(v.onPolyline);
     action->setKeepOriginals(v.keep);
     action->setUseCurrentLayer(v.layer);
     action->setUseCurrentAttributes(v.attr);
@@ -110,6 +114,8 @@ void LC_SplineFromPolylineOptions::apply(const Values& v) {
     ui->cbTolerance->setChecked(v.toleranceMode);
     ui->leTolerance->setText(fromDouble(action->getTolerance())); // as raised to the minimum
     ui->leTolerance->setEnabled(v.toleranceMode);
+    ui->cbOnPolyline->setChecked(v.onPolyline);
+    ui->cbOnPolyline->setEnabled(v.toleranceMode);
     ui->cbKeepOriginals->setChecked(v.keep);
     ui->cbCurrentLayer->setChecked(v.layer);
     ui->cbCurrentAttr->setChecked(v.attr);
@@ -124,6 +130,7 @@ void LC_SplineFromPolylineOptions::doSaveSettings() {
     save("UseFitPoints", action->isUseFitPoints());
     save("UseTolerance", action->isUseTolerance());
     save("Tolerance", fromDouble(action->getTolerance()));
+    save("OnPolyline", action->isOnPolyline());
     save("KeepOriginals", action->isKeepOriginals());
     save("UseCurrentLayer", action->isUseCurrentLayer());
     save("UseCurrentAttributes", action->isUseCurrentAttributes());
@@ -165,6 +172,12 @@ void LC_SplineFromPolylineOptions::onToleranceEditingFinished() {
         action->setTolerance(tolerance);
     }
     ui->leTolerance->setText(fromDouble(action->getTolerance()));
+}
+
+void LC_SplineFromPolylineOptions::onOnPolylineClicked(bool value) {
+    if (action != nullptr) {
+        action->setOnPolyline(value);
+    }
 }
 
 void LC_SplineFromPolylineOptions::onKeepOriginalsClicked(bool value) {

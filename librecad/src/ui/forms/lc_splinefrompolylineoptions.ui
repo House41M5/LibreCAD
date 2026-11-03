@@ -94,6 +94,16 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="cbOnPolyline">
+     <property name="toolTip">
+      <string>With Tolerance: every control point lies on the polyline. Needs more control points for the same tolerance; corners stay sharp.</string>
+     </property>
+     <property name="text">
+      <string>On Polyline</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QCheckBox" name="cbKeepOriginals">
      <property name="toolTip">
       <string>If checked, the original entity stays; otherwise it is removed.</string>

@@ -21,6 +21,7 @@
 // Settings: /Draw/SplineFromPolyline*. "Through Vertices" only means something with degree 2
 // (LC_SplinePoints); this branch's RS_Spline has no fit points, so the box is disabled otherwise.
 // Tolerance (step 22) replaces Mid Points and Through Vertices while it is on, so those are disabled then.
+// On Polyline (step 23) only works with Tolerance, so it is disabled without it.
 #ifndef LC_SPLINEFROMPOLYLINEOPTIONS_H
 #define LC_SPLINEFROMPOLYLINEOPTIONS_H
 
@@ -50,6 +51,7 @@ protected slots:
     void onFitPointsClicked(bool value);
     void onToleranceClicked(bool value);
     void onToleranceEditingFinished();
+    void onOnPolylineClicked(bool value);
     void onKeepOriginalsClicked(bool value);
     void onCurrentLayerClicked(bool value);
     void onCurrentAttrClicked(bool value);
@@ -61,6 +63,7 @@ private:
         bool fit = true;
         bool toleranceMode = false;
         double tolerance = 0.01;
+        bool onPolyline = false;
         bool keep = false;
         bool layer = false;
         bool attr = false;

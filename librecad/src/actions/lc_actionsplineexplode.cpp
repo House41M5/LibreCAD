@@ -382,13 +382,16 @@ const LC_ActionSplineFromPolyline::Fitted& LC_ActionSplineFromPolyline::fitted(c
     Fitted& f = m_fitted;
     if (f.polyline == polyline && f.count == polyline->count() && f.start == polyline->getStartpoint() &&
         f.end == polyline->getEndpoint() && f.length == polyline->getLength() && f.degree == m_degree &&
-        f.tolerance == m_tolerance && f.closed == polyline->isClosed()) {
+        f.tolerance == m_tolerance && f.onPolyline == m_onPolyline && f.closed == polyline->isClosed()) {
         return f;
     }
     std::vector<lc::splinefit::Vec> pts;
     std::vector<char> vertex;
     fitInput(polyline, m_tolerance, pts, vertex);
-    const lc::splinefit::Result r = lc::splinefit::fit(pts, vertex, polyline->isClosed(), m_degree, m_tolerance);
+    const bool closed = polyline->isClosed();
+    const lc::splinefit::Result r = m_onPolyline
+                                        ? lc::splinefit::fitOnPolyline(pts, vertex, closed, m_degree, m_tolerance)
+                                        : lc::splinefit::fit(pts, vertex, closed, m_degree, m_tolerance);
     f = Fitted{};
     f.polyline = polyline;
     f.count = polyline->count();
@@ -397,7 +400,8 @@ const LC_ActionSplineFromPolyline::Fitted& LC_ActionSplineFromPolyline::fitted(c
     f.length = polyline->getLength();
     f.degree = m_degree;
     f.tolerance = m_tolerance;
-    f.closed = polyline->isClosed();
+    f.onPolyline = m_onPolyline;
+    f.closed = closed;
     for (const lc::splinefit::Vec& v : r.control) {
         f.control.emplace_back(v.x, v.y);
     }
