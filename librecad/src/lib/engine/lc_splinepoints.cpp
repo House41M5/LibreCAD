@@ -3648,6 +3648,66 @@ void LC_SplinePoints::trimEndpoint(const RS_Vector& pos)
 {
 }*/
 
+double LC_SplinePoints::curveParam(const RS_Vector& v) const
+{
+	double dt = 0.;
+	const int iQuad = GetNearestQuad(v, nullptr, &dt);
+	return iQuad + dt;
+}
+
+RS2::Ending LC_SplinePoints::getTrimPoint(const RS_Vector& trimCoord, const RS_Vector& trimPoint)
+{
+	if (data.closed || !trimPoint.valid) {
+		return RS2::EndingNone;
+	}
+	// the clicked part is kept: before the trim point keeps the start
+	return curveParam(trimCoord) < curveParam(trimPoint) ? RS2::EndingEnd : RS2::EndingStart;
+}
+
+RS_Vector LC_SplinePoints::prepareTrim(const RS_Vector& trimCoord, const RS_VectorSolutions& trimSol)
+{
+	if (data.closed) {
+		return RS_Vector(false);
+	}
+	// the intersection nearest the click along the curve
+	const double tc = curveParam(trimCoord);
+	RS_Vector best(false);
+	double bestD = RS_MAXDOUBLE;
+	for (const RS_Vector& v : trimSol) {
+		if (!v.valid) {
+			continue;
+		}
+		const double d = std::abs(curveParam(v) - tc);
+		if (d < bestD) {
+			bestD = d;
+			best = v;
+		}
+	}
+	return best;
+}
+
+void LC_SplinePoints::trimStartpoint(const RS_Vector& pos)
+{
+	if (data.closed) {
+		return;
+	}
+	LC_SplinePoints* rest = cut(pos);
+	if (rest != nullptr) {
+		data = rest->data;
+		delete rest;
+	}
+	update();
+}
+
+void LC_SplinePoints::trimEndpoint(const RS_Vector& pos)
+{
+	if (data.closed) {
+		return;
+	}
+	delete cut(pos);
+	update();
+}
+
 LC_SplinePoints* LC_SplinePoints::cut(const RS_Vector& pos)
 {
 	LC_SplinePoints *ret = nullptr;

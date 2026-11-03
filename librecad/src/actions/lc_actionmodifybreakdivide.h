@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "rs_arc.h"
 #include "rs_line.h"
+#include "rs_spline.h"
 #include "lc_abstractactionwithpreview.h"
 
 class LC_ActionModifyBreakDivide:public LC_AbstractActionWithPreview
@@ -117,6 +118,13 @@ protected:
     void createEntitiesForLine(RS_Line *line, RS_Vector &snap, QList<RS_Entity *> &list, bool preview);
     void createEntitiesForCircle(RS_Circle *circle, RS_Vector &vector, QList<RS_Entity *> &list, bool preview);
     void createEntitiesForArc(RS_Arc *arc, RS_Vector &snap, QList<RS_Entity *> &list, bool preview);
+    /**
+     * 2026-11-03 (plans-win librecad-factory-drawings step 25): splines too - the stretch between the two
+     * intersections around the snap point, on the exact curve (RS_Spline::subSpline / splitAt).
+     */
+    void createEntitiesForSpline(RS_Spline *spline, RS_Vector &snap, QList<RS_Entity *> &list, bool preview);
+    /** The entity picked: a line inside an RS_Spline stands for the spline. */
+    static RS_Entity *pickedEntity(RS_Entity *en);
     ArcSegmentData *calculateArcSegments(RS_Arc *arc, RS_Vector &snap);
     ArcSegmentData *findArcSegmentEdges(RS_Arc *arc, RS_Vector &snap, const QVector<RS_Vector>& intersections);
     CircleSegmentData *calculateCircleSegment(RS_Circle *circle, RS_Vector &snap);

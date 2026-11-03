@@ -29,12 +29,31 @@
 #include <iostream>
 #include <numeric>
 
+#include "lc_splinegeom.h"
+
 #include "rs_spline.h"
 
 #include "rs_line.h"
 #include "rs_debug.h"
 #include "rs_graphicview.h"
 #include "rs_painter.h"
+
+namespace {
+using GVec = lc::splinefit::Vec;
+
+GVec toG(const RS_Vector& v) { return {v.x, v.y}; }
+RS_Vector fromG(const GVec& v) { return {v.x, v.y}; }
+
+RS_SplineData toData(const lc::splinegeom::Spline& g) {
+    RS_SplineData out(g.p, false);
+    out.controlPoints.reserve(g.P.size());
+    for (const GVec& q : g.P) {
+        out.controlPoints.push_back(fromG(q));
+    }
+    out.knotslist = g.U;
+    return out;
+}
+}
 
 
 RS_SplineData::RS_SplineData(int _degree, bool _closed):
@@ -167,6 +186,7 @@ void RS_Spline::update() {
     RS_DEBUG->print("RS_Spline::update");
 
     clear();
+    m_tessParams.clear();
 
     if (isUndone()) {
         return;
@@ -193,18 +213,19 @@ void RS_Spline::update() {
         RS_DEBUG->print(RS_Debug::D_NOTICE, "%s: controlPoints: size=%zu\n", __func__, data.controlPoints.size());
     }
 
-	const size_t npts = tControlPoints.size();
-    // order:
-    const size_t  k = data.degree + 1;
-    // resolution:
-	const size_t  p1 = getGraphicVariableInt("$SPLINESEGS", 8) * npts;
-
-	std::vector<double> h(npts+1, 1.);
-	std::vector<RS_Vector> p(p1, {0., 0.});
-    if (data.closed) {
-		rbsplinu(npts,k,p1,tControlPoints,h,p);
-    } else {
-		rbspline(npts,k,p1,tControlPoints,h,p);
+    // 2026-11-03 step 25: lines within a chord error of the exact curve (was $SPLINESEGS lines per control
+    // point, uniform in the parameter: 0.016 off a 5-point vp spline fitted to 0.01)
+    lc::splinegeom::Spline g;
+    if (!curveData(g)) {
+        RS_DEBUG->print("RS_Spline::update: no curve for these data");
+        return;
+    }
+    std::vector<GVec> gp;
+    lc::splinegeom::tessellate(g, lc::splinegeom::defaultChordError(g), gp, m_tessParams);
+    std::vector<RS_Vector> p;
+    p.reserve(gp.size());
+    for (const GVec& q : gp) {
+        p.push_back(fromG(q));
     }
 
 	RS_Vector prev{};
@@ -314,25 +335,59 @@ RS_Vector RS_Spline::getNearestCenter(const RS_Vector& /*coord*/,
 
 
 
-RS_Vector RS_Spline::getNearestMiddle(const RS_Vector& /*coord*/,
+// 2026-11-03 step 25: middle points and points at a distance along the curve (were "none")
+RS_Vector RS_Spline::getNearestMiddle(const RS_Vector& coord,
                                       double* dist,
-                                      int /*middlePoints*/)const {
-	if (dist) {
+                                      int middlePoints)const {
+    if (dist) {
         *dist = RS_MAXDOUBLE;
     }
-
-    return RS_Vector(false);
+    lc::splinegeom::Spline g;
+    if (middlePoints < 1 || !curveData(g)) {
+        return RS_Vector(false);
+    }
+    const double L = lc::splinegeom::length(g);
+    RS_Vector best(false);
+    double bestD = RS_MAXDOUBLE;
+    for (int i = 1; i <= middlePoints; ++i) {
+        const double t = lc::splinegeom::paramAtLength(g, g.t0(), L * i / (middlePoints + 1));
+        const RS_Vector v = fromG(lc::splinegeom::eval(g, t));
+        const double d = v.distanceTo(coord);
+        if (d < bestD) {
+            bestD = d;
+            best = v;
+        }
+    }
+    if (dist) {
+        *dist = bestD;
+    }
+    return best;
 }
 
 
 
-RS_Vector RS_Spline::getNearestDist(double /*distance*/,
-                                    const RS_Vector& /*coord*/,
+RS_Vector RS_Spline::getNearestDist(double distance,
+                                    const RS_Vector& coord,
 									double* dist) const{
     if (dist)
         *dist = RS_MAXDOUBLE;
-
-    return {};
+    lc::splinegeom::Spline g;
+    if (data.closed || !curveData(g)) {
+        return {};
+    }
+    // as RS_Line: `distance` along the curve from the endpoint nearer to coord
+    const double L = lc::splinegeom::length(g);
+    if (distance < 0. || distance > L) {
+        return {};
+    }
+    const RS_Vector a = fromG(lc::splinegeom::eval(g, g.t0()));
+    const RS_Vector b = fromG(lc::splinegeom::eval(g, g.t1()));
+    const bool fromStart = coord.distanceTo(a) <= coord.distanceTo(b);
+    const double t = lc::splinegeom::paramAtLength(g, g.t0(), fromStart ? distance : L - distance);
+    const RS_Vector v = fromG(lc::splinegeom::eval(g, t));
+    if (dist)
+        *dist = v.distanceTo(coord);
+    return v;
 }
 
 
@@ -398,8 +453,258 @@ void RS_Spline::moveRef(const RS_Vector& ref, const RS_Vector& offset) {
     update();
 }
 
+// 2026-11-03 step 25: the knots are mirrored too (reversing only the points changed the shape of a spline
+// with uneven knots, as from a DWG), and a closed spline drops its wrapped points first (reversed, they no
+// longer repeat the first ones and update() would wrap them again).
 void RS_Spline::revertDirection() {
+    if (data.closed && hasWrappedControlPoints()) {
+        data.controlPoints.erase(data.controlPoints.end() - data.degree, data.controlPoints.end());
+    }
 	std::reverse(data.controlPoints.begin(), data.controlPoints.end());
+    if (!data.knotslist.empty()) {
+        const double lo = data.knotslist.front();
+        const double hi = data.knotslist.back();
+        std::vector<double> k(data.knotslist.size());
+        for (size_t i = 0; i < k.size(); ++i) {
+            k[i] = lo + hi - data.knotslist[k.size() - 1 - i];
+        }
+        data.knotslist.swap(k);
+    }
+    update();
+}
+
+bool RS_Spline::curveData(lc::splinegeom::Spline& g) const {
+    std::vector<GVec> cp;
+    cp.reserve(data.controlPoints.size());
+    for (const RS_Vector& v : data.controlPoints) {
+        cp.push_back(toG(v));
+    }
+    return lc::splinegeom::build(data.degree, data.closed, std::move(cp), data.knotslist, g);
+}
+
+bool RS_Spline::curveAndLines(lc::splinegeom::Spline& g, std::vector<GVec>& pts, std::vector<double>& ts) const {
+    if (!curveData(g)) {
+        return false;
+    }
+    pts.clear();
+    ts = m_tessParams;
+    if (!entities.isEmpty() && size_t(entities.size()) + 1 == ts.size()) {
+        pts.reserve(ts.size());
+        for (RS_Entity* e : entities) {
+            const auto* line = dynamic_cast<const RS_Line*>(e);
+            if (line == nullptr) {
+                pts.clear();
+                break;
+            }
+            if (pts.empty()) {
+                pts.push_back(toG(line->getStartpoint()));
+            }
+            pts.push_back(toG(line->getEndpoint()));
+        }
+    }
+    if (pts.size() != ts.size() || pts.size() < 2) {
+        lc::splinegeom::tessellate(g, lc::splinegeom::defaultChordError(g), pts, ts);
+    }
+    return pts.size() >= 2;
+}
+
+bool RS_Spline::hasCurve() const {
+    lc::splinegeom::Spline g;
+    return curveData(g);
+}
+
+double RS_Spline::paramStart() const {
+    lc::splinegeom::Spline g;
+    return curveData(g) ? g.t0() : 0.;
+}
+
+double RS_Spline::paramEnd() const {
+    lc::splinegeom::Spline g;
+    return curveData(g) ? g.t1() : 0.;
+}
+
+double RS_Spline::nearestParam(const RS_Vector& coord, double* dist) const {
+    lc::splinegeom::Spline g;
+    std::vector<GVec> pts;
+    std::vector<double> ts;
+    if (!curveAndLines(g, pts, ts)) {
+        if (dist != nullptr) {
+            *dist = RS_MAXDOUBLE;
+        }
+        return 0.;
+    }
+    return lc::splinegeom::nearestParam(g, pts, ts, toG(coord), dist);
+}
+
+RS_Vector RS_Spline::pointAt(double t, RS_Vector* derivative) const {
+    lc::splinegeom::Spline g;
+    if (!curveData(g)) {
+        return RS_Vector(false);
+    }
+    GVec d1;
+    const GVec c = lc::splinegeom::eval(g, t, &d1);
+    if (derivative != nullptr) {
+        *derivative = fromG(d1);
+    }
+    return fromG(c);
+}
+
+double RS_Spline::lengthBetween(double a, double b) const {
+    lc::splinegeom::Spline g;
+    return curveData(g) ? lc::splinegeom::length(g, std::max(a, g.t0()), std::min(b, g.t1())) : 0.;
+}
+
+double RS_Spline::paramAtLength(double a, double len) const {
+    lc::splinegeom::Spline g;
+    return curveData(g) ? lc::splinegeom::paramAtLength(g, a, len) : a;
+}
+
+bool RS_Spline::subSpline(double a, double b, RS_SplineData& out) const {
+    lc::splinegeom::Spline g;
+    lc::splinegeom::Spline piece;
+    if (!curveData(g) || !lc::splinegeom::sub(g, a, b, piece)) {
+        return false;
+    }
+    out = toData(piece);
+    return true;
+}
+
+bool RS_Spline::splitAt(double t, RS_SplineData& first, RS_SplineData& second, bool& hasSecond) const {
+    lc::splinegeom::Spline g;
+    lc::splinegeom::Spline a;
+    lc::splinegeom::Spline b;
+    hasSecond = false;
+    if (!curveData(g) || !lc::splinegeom::split(g, t, a, b, hasSecond)) {
+        return false;
+    }
+    first = toData(a);
+    if (hasSecond) {
+        second = toData(b);
+    }
+    return true;
+}
+
+double RS_Spline::paramOnLine(const RS_Entity* line, const RS_Vector& v) const {
+    const int i = entities.indexOf(const_cast<RS_Entity*>(line));
+    if (i < 0 || size_t(i) + 1 >= m_tessParams.size()) {
+        return -1.;
+    }
+    const RS_Vector a = line->getStartpoint();
+    const RS_Vector b = line->getEndpoint();
+    const double l2 = (b - a).squared();
+    const double w = l2 > 0. ? std::clamp(RS_Vector::dotP(v - a, b - a) / l2, 0., 1.) : 0.;
+    return m_tessParams[size_t(i)] + w * (m_tessParams[size_t(i) + 1] - m_tessParams[size_t(i)]);
+}
+
+double RS_Spline::extentSize() const {
+    return (getMax() - getMin()).magnitude();
+}
+
+RS_Vector RS_Spline::getNearestPointOnEntity(const RS_Vector& coord, bool onEntity, double* dist,
+                                             RS_Entity** entity) const {
+    lc::splinegeom::Spline g;
+    std::vector<GVec> pts;
+    std::vector<double> ts;
+    if (!curveAndLines(g, pts, ts)) {
+        return RS_EntityContainer::getNearestPointOnEntity(coord, onEntity, dist, entity);
+    }
+    double d = 0.;
+    const double t = lc::splinegeom::nearestParam(g, pts, ts, toG(coord), &d);
+    if (dist != nullptr) {
+        *dist = d;
+    }
+    if (entity != nullptr) {
+        // as before: the line of the spline under the point (callers may expect an atomic entity)
+        const auto it = std::upper_bound(ts.begin(), ts.end(), t);
+        const int i = std::clamp(int(it - ts.begin()) - 1, 0, std::max(0, int(entities.size()) - 1));
+        *entity = entities.isEmpty() ? const_cast<RS_Spline*>(this) : entities.at(i);
+    }
+    return fromG(lc::splinegeom::eval(g, t));
+}
+
+bool RS_Spline::isPointOnEntity(const RS_Vector& coord, double tolerance) const {
+    lc::splinegeom::Spline g;
+    std::vector<GVec> pts;
+    std::vector<double> ts;
+    if (!curveAndLines(g, pts, ts)) {
+        return RS_EntityContainer::isPointOnEntity(coord, tolerance);
+    }
+    double d = RS_MAXDOUBLE;
+    lc::splinegeom::nearestParam(g, pts, ts, toG(coord), &d);
+    // the exact point of a snap still carries rounding: relative to the coordinates and the size
+    const double floor = 1e-12 * (1. + std::abs(coord.x) + std::abs(coord.y)) + 1e-10 * extentSize();
+    return d <= std::max(std::abs(tolerance), floor);
+}
+
+double RS_Spline::getLength() const {
+    lc::splinegeom::Spline g;
+    return curveData(g) ? lc::splinegeom::length(g) : RS_EntityContainer::getLength();
+}
+
+void RS_Spline::stretch(const RS_Vector& firstCorner, const RS_Vector& secondCorner, const RS_Vector& offset) {
+    if (getMin().isInWindow(firstCorner, secondCorner) && getMax().isInWindow(firstCorner, secondCorner)) {
+        move(offset);
+        return;
+    }
+    bool moved = false;
+    for (RS_Vector& v : data.controlPoints) {
+        if (v.isInWindow(firstCorner, secondCorner)) {
+            v.move(offset);
+            moved = true;
+        }
+    }
+    if (moved) {
+        update();
+    }
+}
+
+bool RS_Spline::offset(const RS_Vector& coord, const double& distance) {
+    lc::splinegeom::Spline g;
+    std::vector<GVec> pts;
+    std::vector<double> ts;
+    if (!curveAndLines(g, pts, ts) || !(std::abs(distance) > 0.)) {
+        return false;
+    }
+    const GVec q = toG(coord);
+    const double t = lc::splinegeom::nearestParam(g, pts, ts, q);
+    const GVec c = lc::splinegeom::eval(g, t);
+    const GVec tg = lc::splinegeom::tangentAt(g, t, 1);
+    const double side = (q - c).dot(GVec(-tg.y, tg.x));
+    const double d = side >= 0. ? std::abs(distance) : -std::abs(distance);
+    const double eps = lc::splinegeom::defaultChordError(g);
+    lc::splinegeom::OffsetError why = lc::splinegeom::OffsetError::None;
+    if (g.p == 1) {
+        // degree 1 is a polyline: its mitred offset is exact
+        std::vector<GVec> off;
+        std::vector<char> vertex;
+        if (!lc::splinegeom::offsetPolyline(g, d, eps, off, vertex, &why) ||
+            (!g.periodic && off.size() < 2) || off.size() < 3 - (g.periodic ? 0 : 1)) {
+            return false;
+        }
+        data.controlPoints.clear();
+        for (const GVec& v : off) {
+            data.controlPoints.push_back(fromG(v));
+        }
+        data.knotslist.clear();
+        data.closed = g.periodic;
+        update();
+        return true;
+    }
+    // Tiller-Hanson with knot refinement, corners joined (lc_splinegeom.h offsetSpline); a closed spline
+    // comes back open, ending where it starts (LibreCAD's closed splines have uniform knots only)
+    lc::splinegeom::Spline o;
+    if (!lc::splinegeom::offsetSpline(g, d, eps, o, &why)) {
+        RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Spline::offset: %s",
+                        why == lc::splinegeom::OffsetError::Radius ? "distance reaches the radius of curvature"
+                                                                    : "no offset");
+        return false;
+    }
+    const RS_SplineData od = toData(o);
+    data.controlPoints = od.controlPoints;
+    data.knotslist = od.knotslist;
+    data.closed = false;
+    update();
+    return true;
 }
 
 

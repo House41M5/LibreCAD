@@ -71,6 +71,12 @@ public:
 	static RS_VectorSolutions getIntersection(RS_Entity const* e1,
 			RS_Entity const* e2,
             bool onEntities = false);
+    /**
+     * 2026-11-03 step 25: v, an intersection of `line` (one of the lines inside an RS_Spline) with
+     * `other`, moved onto the spline's curve (and onto other's curve when that is a spline line too).
+     * getIntersection() does this itself; false: did not converge close by, v unchanged.
+     */
+    static bool refineSplineIntersection(RS_Entity const* line, RS_Entity const* other, RS_Vector& v);
 
     static RS_VectorSolutions getIntersectionLineLine(const RS_Entity* e1,
             const RS_Entity* e2);

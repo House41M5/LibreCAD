@@ -1382,24 +1382,47 @@ RS_Vector RS_EntityContainer::getNearestIntersection(const RS_Vector& coord,
     closestEntity = getNearestEntity(coord, nullptr, RS2::ResolveAllButTextImage);
 
     if (closestEntity) {
+        // 2026-11-03 (plans-win librecad-factory-drawings step 25): a spline meets other entities through the
+        // lines inside it (RS_Information::getIntersection moves the point onto the curve). Those lines were
+        // skipped here (ignoredSnap: splines are ignoredOnModification), so a spline met nothing unless the one
+        // line nearest the mouse crossed the other entity itself - rare once the lines follow the curve
+        // closely. Now spline lines count, and a spline line nearest the mouse brings its neighbours within
+        // reach, so the crossing a little along the curve is found too.
+        std::vector<RS_Entity*> firsts{closestEntity};
+        RS_EntityContainer* owner = closestEntity->getParent();
+        if (owner != nullptr && owner->rtti() == RS2::EntitySpline) {
+            const double d0 = closestEntity->getDistanceToPoint(coord);
+            const double reach = std::max(3. * d0, 2. * closestEntity->getLength()) + RS_TOLERANCE;
+            firsts.clear();
+            for (RS_Entity* li : *owner) {
+                if (li != nullptr && li->getDistanceToPoint(coord) <= reach) {
+                    firsts.push_back(li);
+                }
+            }
+            if (firsts.empty()) {
+                firsts.push_back(closestEntity);
+            }
+        }
         for (RS_Entity* en = firstEntity(RS2::ResolveAllButTextImage);
              en;
              en = nextEntity(RS2::ResolveAllButTextImage)) {
             if (
                     !en->isVisible()
-                    || en->getParent()->ignoredSnap()
+                    || (en->getParent()->ignoredSnap() && en->getParent()->rtti() != RS2::EntitySpline)
                     ){
                 continue;
             }
 
-            sol = RS_Information::getIntersection(closestEntity,
-                                                  en,
-                                                  true);
+            for (RS_Entity* first : firsts) {
+                sol = RS_Information::getIntersection(first,
+                                                      en,
+                                                      true);
 
-            point=sol.getClosest(coord,&curDist,nullptr);
-            if(sol.getNumber()>0 && curDist<minDist){
-                closestPoint=point;
-                minDist=curDist;
+                point=sol.getClosest(coord,&curDist,nullptr);
+                if(sol.getNumber()>0 && curDist<minDist){
+                    closestPoint=point;
+                    minDist=curDist;
+                }
             }
 
         }

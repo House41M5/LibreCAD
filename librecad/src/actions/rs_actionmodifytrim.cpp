@@ -31,6 +31,7 @@
 #include "rs_dialogfactory.h"
 #include "rs_graphicview.h"
 #include "rs_modification.h"
+#include "rs_spline.h"
 #include "rs_preview.h"
 #include "rs_debug.h"
 
@@ -75,13 +76,29 @@ void RS_ActionModifyTrim::trigger() {
 
     RS_DEBUG->print("RS_ActionModifyTrim::trigger()");
 
-    if (trimEntity && trimEntity->isAtomic() &&
+    // 2026-11-03 step 25: a spline (RS_Spline, a container) is trimmed too - see RS_Modification::trimSpline
+    const bool splineTrim = trimEntity && trimEntity->rtti() == RS2::EntitySpline;
+    if (trimEntity && (trimEntity->isAtomic() || splineTrim) &&
             limitEntity /* && limitEntity->isAtomic()*/) {
 
         RS_Modification m(*container, graphicView);
-		m.trim(pPoints->trimCoord, (RS_AtomicEntity*)trimEntity,
-			   pPoints->limitCoord, /*(RS_AtomicEntity*)*/limitEntity,
-               both);
+        bool done = false;
+        if (splineTrim) {
+            done = m.trimSpline(pPoints->trimCoord, static_cast<RS_Spline*>(trimEntity),
+                                pPoints->limitCoord, limitEntity, both);
+        } else if (both && limitEntity->rtti() == RS2::EntitySpline) {
+            // trim() would treat the spline limit as an atomic entity: the spline routine trims both
+            done = m.trimSpline(pPoints->limitCoord, static_cast<RS_Spline*>(limitEntity),
+                                pPoints->trimCoord, trimEntity, true);
+        } else {
+            done = m.trim(pPoints->trimCoord, (RS_AtomicEntity*)trimEntity,
+                          pPoints->limitCoord, /*(RS_AtomicEntity*)*/limitEntity,
+                          both);
+        }
+        if (!done && (splineTrim || limitEntity->rtti() == RS2::EntitySpline)) {
+            RS_DIALOGFACTORY->commandMessage(
+                tr("Nothing to trim: the spline does not cross the limit there (a spline is not extended)."));
+        }
 
 		trimEntity = nullptr;
         if (both) {
@@ -144,7 +161,7 @@ void RS_ActionModifyTrim::mouseReleaseEvent(QMouseEvent* e) {
         case ChooseTrimEntity:
 			pPoints->trimCoord = mouse;
             trimEntity = se;
-            if (trimEntity && trimEntity->isAtomic()) {
+            if (trimEntity && (trimEntity->isAtomic() || trimEntity->rtti() == RS2::EntitySpline)) {
                 trigger();
             }
             break;

@@ -35,6 +35,7 @@
 #include "rs_math.h"
 #include "rs_preview.h"
 #include "rs_atomicentity.h"
+#include "rs_spline.h"
 #include "rs_debug.h"
 
 RS_ActionModifyTrimAmount::RS_ActionModifyTrimAmount(
@@ -65,7 +66,9 @@ void RS_ActionModifyTrimAmount::trigger() {
 
     RS_DEBUG->print("RS_ActionModifyTrimAmount::trigger()");
 
-    if (trimEntity && trimEntity->isAtomic() && trimEntity->rtti() != RS2::EntityHyperbola) {
+    // 2026-11-03 step 25: an open spline can be shortened (RS_Modification::trimAmountSpline), not lengthened
+    const bool spline = trimEntity && trimEntity->rtti() == RS2::EntitySpline;
+    if (trimEntity && (trimEntity->isAtomic() || spline) && trimEntity->rtti() != RS2::EntityHyperbola) {
 
         RS_Modification m(*container, graphicView);
         double d;
@@ -76,7 +79,15 @@ void RS_ActionModifyTrimAmount::trigger() {
             d = distance;
         }
 
-		m.trimAmount(*trimCoord, static_cast<RS_AtomicEntity*>(trimEntity), d);
+        if (spline) {
+            if (!m.trimAmountSpline(*trimCoord, static_cast<RS_Spline*>(trimEntity), d)) {
+                RS_DIALOGFACTORY->commandMessage(
+                    d >= 0. ? tr("A spline can be shortened, not lengthened.")
+                            : tr("The spline is not long enough (or closed)."));
+            }
+        } else {
+		    m.trimAmount(*trimCoord, static_cast<RS_AtomicEntity*>(trimEntity), d);
+        }
 
 		trimEntity = nullptr;
         setStatus(ChooseTrimEntity);
@@ -93,7 +104,8 @@ void RS_ActionModifyTrimAmount::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button()==Qt::LeftButton) {
         switch (getStatus()) {
         case ChooseTrimEntity:
-            if (trimEntity && trimEntity->isAtomic() && trimEntity->rtti() != RS2::EntityHyperbola) {
+            if (trimEntity && (trimEntity->isAtomic() || trimEntity->rtti() == RS2::EntitySpline)
+                    && trimEntity->rtti() != RS2::EntityHyperbola) {
                 trigger();
             } else {
 				if (trimEntity == nullptr) {

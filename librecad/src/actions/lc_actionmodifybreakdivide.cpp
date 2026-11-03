@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "lc_linemath.h"
 #include "lc_actionmodifybreakdivide.h"
 #include "rs_information.h"
+#include "lc_rect.h"
+#include <algorithm>
 #include "lc_modifybreakdivideoptions.h"
 
 
@@ -56,10 +58,14 @@ bool LC_ActionModifyBreakDivide::doCheckMayDrawPreview([[maybe_unused]]QMouseEve
  */
 void LC_ActionModifyBreakDivide::doPreparePreviewEntities(QMouseEvent *e, RS_Vector &snap, QList<RS_Entity *> &list, int status){
     if (status == SetLine){
-        RS_Entity *en = catchEntity(e, enTypeList, RS2::ResolveAll);
+        RS_Entity *en = pickedEntity(catchEntity(e, enTypeList, RS2::ResolveAll));
         if (en != nullptr){
             int rtti = en->rtti();
             switch (rtti) {
+                case RS2::EntitySpline: {
+                    createEntitiesForSpline(static_cast<RS_Spline *>(en), snap, list, true);
+                    break;
+                }
                 case RS2::EntityLine: { // process line
                     auto *line = dynamic_cast<RS_Line *>(en);
                     createEntitiesForLine(line, snap, list, true);
@@ -84,10 +90,11 @@ void LC_ActionModifyBreakDivide::doPreparePreviewEntities(QMouseEvent *e, RS_Vec
 
 void LC_ActionModifyBreakDivide::doOnLeftMouseButtonRelease(QMouseEvent *e, int status, const RS_Vector &snapPoint){
     if (status == SetLine){
-        RS_Entity *en = catchEntity(e, enTypeList, RS2::ResolveAll);
+        RS_Entity *en = pickedEntity(catchEntity(e, enTypeList, RS2::ResolveAll));
         if (en != nullptr && checkMayExpandEntity(en, "")){
             int rtti = en->rtti();
             switch (rtti) {
+                case RS2::EntitySpline:
                 case RS2::EntityLine:
                 case RS2::EntityCircle:
                 case RS2::EntityArc:
@@ -119,6 +126,10 @@ void LC_ActionModifyBreakDivide::doPrepareTriggerEntities(QList<RS_Entity *> &li
         int rtti = en->rtti();
         // do processing of individual entity types
         switch (rtti) {
+            case RS2::EntitySpline: {
+                createEntitiesForSpline(static_cast<RS_Spline *>(en), snap, list, false);
+                break;
+            }
             case RS2::EntityLine: {
                 auto *line = dynamic_cast<RS_Line *>(en);
                 createEntitiesForLine(line, snap, list, false);
@@ -136,6 +147,151 @@ void LC_ActionModifyBreakDivide::doPrepareTriggerEntities(QList<RS_Entity *> &li
             }
             default:
                 break;
+        }
+    }
+}
+
+RS_Entity *LC_ActionModifyBreakDivide::pickedEntity(RS_Entity *en){
+    if (en != nullptr && en->getParent() != nullptr && en->getParent()->rtti() == RS2::EntitySpline){
+        return en->getParent();
+    }
+    return en;
+}
+
+void LC_ActionModifyBreakDivide::createEntitiesForSpline(RS_Spline *spline, RS_Vector &snap, QList<RS_Entity *> &list,
+                                                         bool preview){
+    if (!checkMayExpandEntity(spline, "") || !spline->hasCurve()){
+        return;
+    }
+    // intersections with every visible entity (on both), found on the spline's lines and moved onto its curve
+    // by RS_Information::getIntersection
+    std::vector<RS_Entity *> lines;
+    for (RS_Entity *li: *spline) {
+        if (li != nullptr && li->rtti() == RS2::EntityLine){
+            lines.push_back(li);
+        }
+    }
+    const LC_Rect box{spline->getMin(), spline->getMax()};
+    std::vector<double> ts;
+    auto collect = [&](RS_Entity *other){
+        if (!LC_Rect{other->getMin(), other->getMax()}.intersects(box, RS_TOLERANCE)){
+            return;
+        }
+        for (RS_Entity *li: lines) {
+            if (li == other){
+                continue;
+            }
+            RS_VectorSolutions sol = RS_Information::getIntersection(li, other, true);
+            for (const RS_Vector &v: sol) {
+                if (v.valid){
+                    ts.push_back(spline->nearestParam(v));
+                }
+            }
+        }
+    };
+    for (auto e: *container) {
+        if (e == nullptr || !e->isVisible()){
+            continue;
+        }
+        if (e->isContainer()){
+            auto *ec = static_cast<RS_EntityContainer *>(e);
+            for (RS_Entity *e2 = ec->firstEntity(RS2::ResolveAll); e2; e2 = ec->nextEntity(RS2::ResolveAll)) {
+                collect(e2);
+            }
+        } else {
+            collect(e);
+        }
+    }
+    const double t0 = spline->paramStart();
+    const double t1 = spline->paramEnd();
+    const double T = t1 - t0;
+    const double tiny = 1e-9 * T;
+    std::sort(ts.begin(), ts.end());
+    ts.erase(std::unique(ts.begin(), ts.end(), [tiny](double a, double b){ return std::abs(a - b) <= tiny; }), ts.end());
+    const bool closed = spline->isClosed();
+    if (!closed){
+        ts.erase(std::remove_if(ts.begin(), ts.end(), [&](double t){ return t - t0 <= tiny || t1 - t <= tiny; }), ts.end());
+    } else if (ts.size() > 1 && ts.back() - ts.front() >= T - tiny){
+        ts.pop_back();
+    }
+    if (ts.empty() || (closed && ts.size() < 2)){
+        return; // nothing crosses it (a loop needs two crossings to have a stretch)
+    }
+    const double tc = spline->nearestParam(snap);
+    double lo = closed ? ts.back() - T : t0;
+    double hi = closed ? ts.front() + T : t1;
+    for (double t: ts) {
+        if (t <= tc){
+            lo = t;
+        }
+    }
+    for (auto it = ts.rbegin(); it != ts.rend(); ++it) {
+        if (*it > tc){
+            hi = *it;
+        }
+    }
+    const bool toStart = !closed && lo <= t0;
+    const bool toEnd = !closed && hi >= t1;
+    // pieces: the snap stretch [lo, hi] and the rest
+    RS_SplineData snapPiece;
+    std::vector<RS_SplineData> rest;
+    bool ok = false;
+    if (!closed){
+        ok = spline->subSpline(lo, hi, snapPiece);
+        RS_SplineData d;
+        if (ok && !toStart && spline->subSpline(t0, lo, d)){
+            rest.push_back(d);
+        }
+        if (ok && !toEnd && spline->subSpline(hi, t1, d)){
+            rest.push_back(d);
+        }
+    } else {
+        RS_SplineData opened, unused;
+        bool two = false;
+        const double loW = lo < t0 ? lo + T : lo;
+        if (spline->splitAt(loW, opened, unused, two)){
+            RS_Spline loop(nullptr, opened);
+            loop.update();
+            const double a = loop.paramStart();
+            RS_SplineData d;
+            ok = loop.subSpline(a, a + (hi - lo), snapPiece);
+            if (ok && loop.subSpline(a + (hi - lo), loop.paramEnd(), d)){
+                rest.push_back(d);
+            }
+        }
+    }
+    if (!ok){
+        return;
+    }
+    bool createSnapSegment = true;
+    bool createNonSnapSegments = true;
+    if (removeSegments){
+        createSnapSegment = preview ? removeSelected : !removeSelected;
+        createNonSnapSegments = preview ? !removeSelected : removeSelected;
+    }
+    auto make = [&](const RS_SplineData &d){
+        auto *s = new RS_Spline(container, d);
+        s->update();
+        if (!preview){
+            s->setPen(spline->getPen(false));
+            s->setLayer(spline->getLayer(true));
+        }
+        list << s;
+    };
+    if (createSnapSegment){
+        make(snapPiece);
+    }
+    if (preview && !removeSegments){
+        if (!toStart){
+            createPoint(spline->pointAt(lo < t0 ? lo + T : lo), list);
+        }
+        if (!toEnd){
+            createPoint(spline->pointAt(hi > t1 ? hi - T : hi), list);
+        }
+    }
+    if (createNonSnapSegments){
+        for (const RS_SplineData &d: rest) {
+            make(d);
         }
     }
 }

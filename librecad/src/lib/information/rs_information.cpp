@@ -45,7 +45,120 @@
 #include "rs_line.h"
 #include "rs_math.h"
 #include "rs_polyline.h"
+#include "rs_spline.h"
 #include "rs_vector.h"
+
+namespace {
+/*
+ * 2026-11-03 (plans-win librecad-factory-drawings step 25): an RS_Spline meets other entities through the
+ * lines inside it, so snaps and trim limits landed on a chord, off the curve by up to its chord error. Each
+ * such intersection is moved onto the curve here: Newton along the spline's tangent against the other
+ * entity (the tangent line's own intersection with it), or a 2x2 Newton when both are splines. A result
+ * that does not converge close by keeps the chord point.
+ */
+thread_local bool g_refiningSplines = false;
+
+const RS_Spline* splineOf(const RS_Entity* e) {
+    if (e == nullptr) {
+        return nullptr;
+    }
+    const RS_EntityContainer* p = e->getParent();
+    return (p != nullptr && p->rtti() == RS2::EntitySpline) ? static_cast<const RS_Spline*>(p) : nullptr;
+}
+
+double keepIn(const RS_Spline* s, double t) {
+    const double t0 = s->paramStart();
+    const double t1 = s->paramEnd();
+    if (!s->isClosed()) {
+        return std::clamp(t, t0, t1);
+    }
+    const double T = t1 - t0;
+    double r = std::fmod(t - t0, T);
+    if (r < 0.) {
+        r += T;
+    }
+    return t0 + r;
+}
+
+bool refineSplineOther(const RS_Spline* s, const RS_Entity* line, const RS_Entity* other, RS_Vector& v) {
+    double t = s->paramOnLine(line, v);
+    if (t < 0.) {
+        return false;
+    }
+    const double size = s->extentSize() + (other->getMax() - other->getMin()).magnitude() + 1.;
+    for (int it = 0; it < 30; ++it) {
+        RS_Vector d;
+        const RS_Vector c = s->pointAt(t, &d);
+        const double dd = d.squared();
+        if (!c.valid || !(dd > 0.)) {
+            return false;
+        }
+        const RS_Vector u = d / std::sqrt(dd);
+        const RS_Line tangent(nullptr, RS_LineData(c - u * size, c + u * size));
+        const RS_VectorSolutions sol = RS_Information::getIntersection(&tangent, other, false);
+        if (sol.empty()) {
+            return false;
+        }
+        const RS_Vector w = sol.getClosest(c);
+        if (!w.valid) {
+            return false;
+        }
+        const double tn = keepIn(s, t + RS_Vector::dotP(w - c, d) / dd);
+        const bool done = std::abs(tn - t) <= 1e-14 * (1. + std::abs(t));
+        t = tn;
+        if (done) {
+            break;
+        }
+    }
+    const RS_Vector r = s->pointAt(t);
+    double gap = RS_MAXDOUBLE;
+    other->getNearestPointOnEntity(r, false, &gap);
+    const double tol = 1e-9 * (1. + std::abs(r.x) + std::abs(r.y));
+    if (!r.valid || gap > std::max(tol, 1e-9 * size) || r.distanceTo(v) > 1e-3 * s->extentSize() + tol) {
+        return false;
+    }
+    v = r;
+    return true;
+}
+
+bool refineSplineSpline(const RS_Spline* s1, const RS_Entity* l1, const RS_Spline* s2, const RS_Entity* l2,
+                        RS_Vector& v) {
+    double a = s1->paramOnLine(l1, v);
+    double b = s2->paramOnLine(l2, v);
+    if (a < 0. || b < 0.) {
+        return false;
+    }
+    RS_Vector F;
+    for (int it = 0; it < 30; ++it) {
+        RS_Vector A, B;
+        const RS_Vector p = s1->pointAt(a, &A);
+        const RS_Vector q = s2->pointAt(b, &B);
+        F = p - q;
+        const double det = -A.x * B.y + B.x * A.y;
+        if (!(std::abs(det) > 0.)) {
+            return false;
+        }
+        const double da = (F.x * B.y - B.x * F.y) / det;
+        const double db = (-A.x * F.y + A.y * F.x) / det;
+        const double an = keepIn(s1, a + da);
+        const double bn = keepIn(s2, b + db);
+        const bool done = std::abs(an - a) <= 1e-14 * (1. + std::abs(a)) && std::abs(bn - b) <= 1e-14 * (1. + std::abs(b));
+        a = an;
+        b = bn;
+        if (done) {
+            break;
+        }
+    }
+    const RS_Vector r = s1->pointAt(a);
+    const double tol = 1e-9 * (1. + std::abs(r.x) + std::abs(r.y));
+    if (!r.valid || r.distanceTo(s2->pointAt(b)) > std::max(tol, 1e-9 * s1->extentSize()) ||
+        r.distanceTo(v) > 1e-3 * std::max(s1->extentSize(), s2->extentSize()) + tol) {
+        return false;
+    }
+    v = r;
+    return true;
+}
+}
 
 namespace {
 
@@ -702,7 +815,36 @@ RS_VectorSolutions RS_Information::getIntersection(RS_Entity const* e1,
         ret2.push_back(vp);
     }
 
+    // step 25: intersections with a spline's lines moved onto the curve (see the top of this file)
+    if ((splineOf(e1) != nullptr || splineOf(e2) != nullptr) && !g_refiningSplines && !ret2.empty()) {
+        for (size_t i = 0; i < ret2.size(); ++i) {
+            RS_Vector v = ret2.at(i);
+            if (refineSplineIntersection(e1, e2, v)) {
+                ret2.set(i, v);
+            }
+        }
+    }
+
     return ret2;
+}
+
+bool RS_Information::refineSplineIntersection(RS_Entity const* line, RS_Entity const* other, RS_Vector& v) {
+    const RS_Spline* s1 = splineOf(line);
+    const RS_Spline* s2 = splineOf(other);
+    if ((s1 == nullptr && s2 == nullptr) || g_refiningSplines || !v.valid) {
+        return false;
+    }
+    struct Guard {
+        Guard() { g_refiningSplines = true; }
+        ~Guard() { g_refiningSplines = false; }
+    } guard;
+    if (s1 != nullptr && s2 != nullptr) {
+        return refineSplineSpline(s1, line, s2, other, v);
+    }
+    if (s1 != nullptr) {
+        return refineSplineOther(s1, line, other, v);
+    }
+    return refineSplineOther(s2, other, line, v);
 }
 
 

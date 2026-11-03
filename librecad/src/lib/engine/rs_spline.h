@@ -31,6 +31,15 @@
 #include <vector>
 #include "rs_entitycontainer.h"
 
+namespace lc {
+namespace splinefit {
+struct Vec;
+}
+namespace splinegeom {
+struct Spline;
+}
+}
+
 /**
  * Holds the data that defines a line.
  */
@@ -158,9 +167,50 @@ public:
 
 		void calculateBorders() override;
 
+		/*
+		 * 2026-11-03 (plans-win librecad-factory-drawings step 25): the exact curve (lc_splinegeom.h)
+		 * instead of the lines inside. update() makes those lines within a chord error of the curve
+		 * (they were $SPLINESEGS per control point, off by more than a vp tolerance on few points), and
+		 * the functions below answer from the curve itself. Parameters t run over [paramStart(),
+		 * paramEnd()]; a closed spline's run once round.
+		 */
+		RS_Vector getNearestPointOnEntity(const RS_Vector& coord, bool onEntity = true,
+										  double* dist = nullptr, RS_Entity** entity = nullptr) const override;
+		double getLength() const override;
+		/** On the curve itself (the lines inside are off it by up to their chord error). */
+		bool isPointOnEntity(const RS_Vector& coord, double tolerance = 20. * RS_TOLERANCE) const override;
+		/** Moves the control points inside the window (all of it inside: moves the spline). */
+		void stretch(const RS_Vector& firstCorner, const RS_Vector& secondCorner,
+					 const RS_Vector& offset) override;
+		/** Parallel curve at `distance` on coord's side, fitted back to a spline (see lc_splinegeom.h). */
+		bool offset(const RS_Vector& coord, const double& distance) override;
+
+		/** Enough control points for a curve. */
+		bool hasCurve() const;
+		double paramStart() const;
+		double paramEnd() const;
+		double nearestParam(const RS_Vector& coord, double* dist = nullptr) const;
+		RS_Vector pointAt(double t, RS_Vector* derivative = nullptr) const;
+		double lengthBetween(double a, double b) const;
+		/** The parameter `len` along the curve after a (clamped to the end). */
+		double paramAtLength(double a, double len) const;
+		/** The piece [a, b] as an open spline with its own knots (layer/pen not included). */
+		bool subSpline(double a, double b, RS_SplineData& out) const;
+		/** Open: [start, t] and [t, end]; closed: one open spline from t round to t (hasSecond false). */
+		bool splitAt(double t, RS_SplineData& first, RS_SplineData& second, bool& hasSecond) const;
+		/** Parameter for a point v on one of the lines inside (that line's share of the parameter); -1: not ours. */
+		double paramOnLine(const RS_Entity* line, const RS_Vector& v) const;
+		/** Diagonal of the box around the curve. */
+		double extentSize() const;
+
         friend class RS_FilterDXFRW;
 
 private:
+		/** The curve and the points of the lines inside with their parameters (false: no curve). */
+		bool curveAndLines(lc::splinegeom::Spline& g, std::vector<lc::splinefit::Vec>& pts,
+						   std::vector<double>& ts) const;
+		std::vector<double> m_tessParams; ///< parameter of each line point made by update()
+
 		std::vector<double> knot(size_t num, size_t order) const;
 		void rbspline(size_t npts, size_t k, size_t p1,
 		              const std::vector<RS_Vector>& b,
@@ -180,6 +230,7 @@ private:
          *          for a cubic spline with wrapped splines, the last three control points are the same as the first three.
          */
         bool hasWrappedControlPoints() const;
+        bool curveData(lc::splinegeom::Spline& g) const;
 
 protected:
 		RS_SplineData data;

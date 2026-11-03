@@ -45,6 +45,7 @@
 #include "rs_math.h"
 #include "rs_mtext.h"
 #include "rs_polyline.h"
+#include "rs_spline.h"
 #include "rs_text.h"
 #include "rs_units.h"
 #include "lc_splinepoints.h"
@@ -130,8 +131,12 @@ RS_VectorSolutions findIntersection(const RS_Entity& trimEntity, const RS_Entity
             RS_VectorSolutions s2 = RS_Information::getIntersection(&trimEntity,
                                                                     e, false);
 
-            std::copy_if(s2.begin(), s2.end(), std::back_inserter(sol), [e, tolerance](const RS_Vector& vp) {
-                return vp.valid && e->isPointOnEntity(vp, tolerance);
+            // step 25: a point on a spline's line was moved onto the curve (RS_Information::getIntersection),
+            // off that line by up to its chord error: ask the spline
+            const RS_Entity* owner = (e->getParent() != nullptr && e->getParent()->rtti() == RS2::EntitySpline)
+                                         ? static_cast<const RS_Entity*>(e->getParent()) : e;
+            std::copy_if(s2.begin(), s2.end(), std::back_inserter(sol), [owner, tolerance](const RS_Vector& vp) {
+                return vp.valid && owner->isPointOnEntity(vp, tolerance);
             });
         }
     }
@@ -2678,6 +2683,280 @@ bool RS_Modification::cut(const RS_Vector& cutCoord,
     }
 
     return true;
+}
+
+
+
+namespace {
+// step 25 helpers (see rs_modification.h at cutSpline)
+
+RS_Spline* newSplineLike(RS_EntityContainer* parent, const RS_SplineData& d, const RS_Entity* like) {
+    auto* s = new RS_Spline(parent, d);
+    s->setLayer(like->getLayer(false));
+    s->setPen(like->getPen(false));
+    s->update();
+    return s;
+}
+
+const RS_Spline* splineOwner(const RS_Entity* e) {
+    const RS_EntityContainer* p = e != nullptr ? e->getParent() : nullptr;
+    return (p != nullptr && p->rtti() == RS2::EntitySpline) ? static_cast<const RS_Spline*>(p) : nullptr;
+}
+
+/**
+ * Points of spline s's curve where it meets limit: an atomic limit counts as extended (as trim does with a
+ * line or circle), a container's pieces do not. Each found on one of s's lines, then moved onto the curve.
+ */
+std::vector<RS_Vector> splineHits(RS_Spline* s, RS_Entity* limit) {
+    std::vector<RS_Vector> out;
+    std::vector<RS_Entity*> targets;
+    if (limit->isAtomic()) {
+        targets.push_back(limit);
+    } else if (limit->isContainer()) {
+        auto* ec = static_cast<RS_EntityContainer*>(limit);
+        for (RS_Entity* e = ec->firstEntity(RS2::ResolveAll); e != nullptr; e = ec->nextEntity(RS2::ResolveAll)) {
+            targets.push_back(e);
+        }
+    }
+    const double size = s->extentSize();
+    const double onTol = 1e-6 * size + 1e-9;
+    std::vector<RS_Entity*> lines;
+    for (RS_Entity* li : *s) {
+        if (li != nullptr && li->rtti() == RS2::EntityLine) {
+            lines.push_back(li);
+        }
+    }
+    for (RS_Entity* li : lines) {
+        const auto* line = static_cast<const RS_Line*>(li);
+        const RS_Line bare(nullptr, line->getData()); // no parent: no refinement inside getIntersection yet
+        const RS_Vector a = line->getStartpoint();
+        const RS_Vector b = line->getEndpoint();
+        const double l2 = (b - a).squared();
+        for (RS_Entity* e : targets) {
+            if (e == li) {
+                continue;
+            }
+            const RS_VectorSolutions sol = RS_Information::getIntersection(&bare, e, false);
+            for (const RS_Vector& v0 : sol) {
+                if (!v0.valid) {
+                    continue;
+                }
+                const double w = l2 > 0. ? RS_Vector::dotP(v0 - a, b - a) / l2 : 0.;
+                if (w < -1e-9 || w > 1. + 1e-9) {
+                    continue; // not on this line: a neighbour finds it
+                }
+                RS_Vector v = v0;
+                RS_Information::refineSplineIntersection(li, e, v);
+                if (!limit->isAtomic()) {
+                    const RS_Spline* ls = splineOwner(e);
+                    if (ls != nullptr ? !ls->isPointOnEntity(v, 1e-6 * ls->extentSize() + 1e-9)
+                                      : !e->isPointOnEntity(v, 1e-4)) {
+                        continue;
+                    }
+                }
+                double d = RS_MAXDOUBLE;
+                s->nearestParam(v, &d);
+                if (d <= onTol) {
+                    out.push_back(v);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * The part of s kept by a trim: the side of keepCoord up to the hit nearest chooseCoord (open), or the
+ * stretch between the two hits around keepCoord (closed). false: nothing to trim.
+ */
+bool keptPiece(const RS_Spline* s, const std::vector<RS_Vector>& hits, const RS_Vector& keepCoord,
+               const RS_Vector& chooseCoord, RS_SplineData& out) {
+    if (hits.empty() || !s->hasCurve()) {
+        return false;
+    }
+    const double t0 = s->paramStart();
+    const double t1 = s->paramEnd();
+    const double T = t1 - t0;
+    const double tiny = 1e-9 * T;
+    const double tc = s->nearestParam(keepCoord);
+    std::vector<double> ts;
+    for (const RS_Vector& v : hits) {
+        ts.push_back(s->nearestParam(v));
+    }
+    if (!s->isClosed()) {
+        size_t k = 0;
+        double best = RS_MAXDOUBLE;
+        for (size_t i = 0; i < hits.size(); ++i) {
+            const double d = hits[i].distanceTo(chooseCoord);
+            if (d < best) {
+                best = d;
+                k = i;
+            }
+        }
+        const double ti = ts[k];
+        if (ti - t0 <= tiny || t1 - ti <= tiny) {
+            return false; // the hit is an end: nothing to cut off
+        }
+        return tc < ti ? s->subSpline(t0, ti, out) : s->subSpline(ti, t1, out);
+    }
+    std::sort(ts.begin(), ts.end());
+    ts.erase(std::unique(ts.begin(), ts.end(), [tiny](double a, double b) { return std::abs(a - b) <= tiny; }), ts.end());
+    if (ts.size() > 1 && ts.back() - ts.front() >= T - tiny) {
+        ts.pop_back(); // t0 and t1 are the same point
+    }
+    if (ts.size() < 2) {
+        return false; // one hit cannot cut a piece out of a loop
+    }
+    double lo = ts.back() - T;
+    double hi = ts.front() + T;
+    for (double t : ts) {
+        if (t <= tc) {
+            lo = t;
+        }
+    }
+    for (auto it = ts.rbegin(); it != ts.rend(); ++it) {
+        if (*it > tc) {
+            hi = *it;
+        }
+    }
+    RS_SplineData opened;
+    RS_SplineData unused;
+    bool two = false;
+    const double loW = lo < t0 ? lo + T : lo;
+    if (!s->splitAt(loW, opened, unused, two)) {
+        return false;
+    }
+    RS_Spline loop(nullptr, opened);
+    loop.update();
+    const double a = loop.paramStart();
+    return loop.subSpline(a, a + (hi - lo), out);
+}
+}
+
+bool RS_Modification::cutSpline(const RS_Vector& cutCoord, RS_Spline* spline) {
+    if (spline == nullptr || spline->isLocked() || !spline->isVisible() || !cutCoord.valid || !spline->hasCurve()) {
+        return false;
+    }
+    const double t = spline->nearestParam(cutCoord);
+    if (!spline->isClosed()) {
+        const double t0 = spline->paramStart();
+        const double t1 = spline->paramEnd();
+        if (spline->lengthBetween(t0, t) <= RS_TOLERANCE || spline->lengthBetween(t, t1) <= RS_TOLERANCE) {
+            return false; // at an end (as cut() for other entities)
+        }
+    }
+    RS_SplineData first;
+    RS_SplineData second;
+    bool two = false;
+    if (!spline->splitAt(t, first, second, two)) {
+        return false;
+    }
+    std::vector<RS_Entity*> news{newSplineLike(m_container, first, spline)};
+    if (two) {
+        news.push_back(newSplineLike(m_container, second, spline));
+    }
+    replaceEntities({spline}, news);
+    return true;
+}
+
+bool RS_Modification::trimSpline(const RS_Vector& trimCoord, RS_Spline* trimEntity, const RS_Vector& limitCoord,
+                                 RS_Entity* limitEntity, bool both) {
+    if (trimEntity == nullptr || limitEntity == nullptr || trimEntity == limitEntity) {
+        return false;
+    }
+    if (trimEntity->isLocked() || !trimEntity->isVisible()) {
+        return false;
+    }
+    const std::vector<RS_Vector> hits = splineHits(trimEntity, limitEntity);
+    RS_SplineData kept;
+    if (!keptPiece(trimEntity, hits, trimCoord, limitCoord, kept)) {
+        return false;
+    }
+    std::vector<RS_Entity*> olds{trimEntity};
+    std::vector<RS_Entity*> news{newSplineLike(m_container, kept, trimEntity)};
+    const bool trimBoth = both && !limitEntity->isLocked() && limitEntity->isVisible();
+    if (trimBoth) {
+        if (limitEntity->rtti() == RS2::EntitySpline) {
+            auto* ls = static_cast<RS_Spline*>(limitEntity);
+            RS_SplineData kept2;
+            if (keptPiece(ls, hits, limitCoord, trimCoord, kept2)) {
+                olds.push_back(ls);
+                news.push_back(newSplineLike(m_container, kept2, ls));
+            }
+        } else if (limitEntity->isAtomic()) {
+            // as trim() trims its limit entity
+            auto* trimmed2 = static_cast<RS_AtomicEntity*>(limitEntity->clone());
+            trimmed2->setHighlighted(false);
+            RS_VectorSolutions sol;
+            for (const RS_Vector& v : hits) {
+                sol.push_back(v);
+            }
+            const RS_Vector is2 = trimmed2->trimmable() ? trimmed2->prepareTrim(limitCoord, sol) : sol.getClosest(trimCoord);
+            switch (trimmed2->getTrimPoint(limitCoord, is2)) {
+            case RS2::EndingStart:
+                trimmed2->trimStartpoint(is2);
+                break;
+            case RS2::EndingEnd:
+                trimmed2->trimEndpoint(is2);
+                break;
+            default:
+                break;
+            }
+            olds.push_back(limitEntity);
+            news.push_back(trimmed2);
+        }
+    }
+    replaceEntities(olds, news);
+    return true;
+}
+
+bool RS_Modification::trimAmountSpline(const RS_Vector& trimCoord, RS_Spline* spline, double dist) {
+    if (spline == nullptr || spline->isLocked() || !spline->isVisible() || spline->isClosed() || !spline->hasCurve()) {
+        return false;
+    }
+    if (!(dist < 0.)) {
+        return false; // lengthening a spline is not supported
+    }
+    const double t0 = spline->paramStart();
+    const double t1 = spline->paramEnd();
+    const double L = spline->lengthBetween(t0, t1);
+    const double cut = -dist;
+    if (cut >= L) {
+        return false;
+    }
+    const bool atStart = trimCoord.distanceTo(spline->getStartpoint()) < trimCoord.distanceTo(spline->getEndpoint());
+    RS_SplineData kept;
+    const bool ok = atStart ? spline->subSpline(spline->paramAtLength(t0, cut), t1, kept)
+                            : spline->subSpline(t0, spline->paramAtLength(t0, L - cut), kept);
+    if (!ok) {
+        return false;
+    }
+    replaceEntities({spline}, {newSplineLike(m_container, kept, spline)});
+    return true;
+}
+
+void RS_Modification::replaceEntities(const std::vector<RS_Entity*>& olds, const std::vector<RS_Entity*>& news) {
+    if (m_graphicView) {
+        for (RS_Entity* e : olds) {
+            m_graphicView->deleteEntity(e);
+        }
+    }
+    for (RS_Entity* e : news) {
+        m_container->addEntity(e);
+        if (m_graphicView) {
+            m_graphicView->drawEntity(e);
+        }
+    }
+    if (m_handleUndo) {
+        LC_UndoSection undo(m_document);
+        for (RS_Entity* e : news) {
+            undo.addUndoable(e);
+        }
+        for (RS_Entity* e : olds) {
+            e->setUndoState(true);
+            undo.addUndoable(e);
+        }
+    }
 }
 
 

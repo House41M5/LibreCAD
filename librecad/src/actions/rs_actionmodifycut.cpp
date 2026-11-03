@@ -31,6 +31,7 @@
 #include "rs_dialogfactory.h"
 #include "rs_graphicview.h"
 #include "rs_modification.h"
+#include "rs_spline.h"
 #include "rs_debug.h"
 
 
@@ -54,14 +55,22 @@ void RS_ActionModifyCut::trigger() {
 
     RS_DEBUG->print("RS_ActionModifyCut::trigger()");
 
-	if (cutEntity && cutEntity->isAtomic() && cutCoord->valid &&
+	// 2026-11-03 step 25: a spline (RS_Spline, a container) is cut too - see RS_Modification::cutSpline
+	const bool spline = cutEntity && cutEntity->rtti() == RS2::EntitySpline;
+	if (cutEntity && (cutEntity->isAtomic() || spline) && cutCoord->valid &&
 			cutEntity->isPointOnEntity(*cutCoord)) {
 
         cutEntity->setHighlighted(false);
         graphicView->drawEntity(cutEntity);
 
         RS_Modification m(*container, graphicView);
-		m.cut(*cutCoord, (RS_AtomicEntity*)cutEntity);
+        if (spline) {
+            if (!m.cutSpline(*cutCoord, static_cast<RS_Spline*>(cutEntity))) {
+                RS_DIALOGFACTORY->commandMessage(tr("Cutting point is at an end of the spline."));
+            }
+        } else {
+            m.cut(*cutCoord, (RS_AtomicEntity*)cutEntity);
+        }
 
 		cutEntity = nullptr;
 		*cutCoord = RS_Vector(false);
@@ -101,13 +110,13 @@ void RS_ActionModifyCut::mouseReleaseEvent(QMouseEvent* e) {
             cutEntity = catchEntity(e);
 			if (cutEntity==nullptr) {
                 RS_DIALOGFACTORY->commandMessage(tr("No Entity found."));
-            } else if(cutEntity->trimmable()){
+            } else if(cutEntity->trimmable() || cutEntity->rtti() == RS2::EntitySpline){
                 cutEntity->setHighlighted(true);
                 graphicView->drawEntity(cutEntity);
                 setStatus(SetCutCoord);
             }else
                 RS_DIALOGFACTORY->commandMessage(
-                            tr("Entity must be a line, arc, circle, ellipse or interpolation spline."));
+                            tr("Entity must be a line, arc, circle, ellipse or spline."));
             break;
 
         case SetCutCoord:

@@ -27,12 +27,15 @@
 #ifndef RS_MODIFICATION_H
 #define RS_MODIFICATION_H
 
+#include <vector>
 #include <QHash>
 #include "rs_pen.h"
 #include "rs_vector.h"
 
 class RS_AtomicEntity;
 class RS_Entity;
+class RS_Spline;
+struct RS_SplineData;
 class RS_EntityContainer;
 class RS_MText;
 class RS_Text;
@@ -244,6 +247,24 @@ public:
                     double dist);
     bool offset(const RS_OffsetData& data);
     bool cut(const RS_Vector& cutCoord, RS_AtomicEntity* cutEntity);
+    /*
+     * 2026-11-03 (plans-win librecad-factory-drawings step 25): an RS_Spline is a container, so cut, trim
+     * and trimAmount (all RS_AtomicEntity) never took one. These do, on the exact curve (RS_Spline::splitAt,
+     * subSpline): the pieces are open splines with their own knots, layer and pen kept.
+     */
+    /** The spline cut at the curve point nearest cutCoord (closed: opened there). */
+    bool cutSpline(const RS_Vector& cutCoord, RS_Spline* spline);
+    /**
+     * Trim with a spline as the trimmed entity: the part clicked (trimCoord) is kept up to the intersection
+     * with limitEntity nearest limitCoord (a line or circle limit counts as extended). both: the limit is
+     * trimmed too. A spline is never extended.
+     */
+    bool trimSpline(const RS_Vector& trimCoord, RS_Spline* trimEntity, const RS_Vector& limitCoord,
+                    RS_Entity* limitEntity, bool both);
+    /** Shortens an open spline by -dist at the end nearer trimCoord (dist > 0, lengthening: false). */
+    bool trimAmountSpline(const RS_Vector& trimCoord, RS_Spline* spline, double dist);
+    /** olds out, news in, one undo cycle (as cut() and trim() do it). */
+    void replaceEntities(const std::vector<RS_Entity*>& olds, const std::vector<RS_Entity*>& news);
     bool stretch(const RS_Vector& firstCorner,
                                 const RS_Vector& secondCorner,
                                 const RS_Vector& offset);

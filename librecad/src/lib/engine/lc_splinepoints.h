@@ -148,8 +148,11 @@ public:
 
 	//void moveStartpoint(const RS_Vector& pos) override;
 	//void moveEndpoint(const RS_Vector& pos) override;
-	//RS2::Ending getTrimPoint(const RS_Vector& coord,
-	//          const RS_Vector& trimPoint);
+	// 2026-11-03 (plans-win librecad-factory-drawings step 25): trimming, on the open spline only (it was
+	// "maybe in the future": trim() replaced the spline with an unchanged copy). Positions along the curve
+	// are quad index + t (curveParam); the trims use cut().
+	RS2::Ending getTrimPoint(const RS_Vector& trimCoord, const RS_Vector& trimPoint) override;
+	RS_Vector prepareTrim(const RS_Vector& trimCoord, const RS_VectorSolutions& trimSol) override;
 	//void reverse() override;
 	/** @return the center point of the line. */
 	//RS_Vector getMiddlePoint() {
@@ -239,9 +242,10 @@ public:
 	RS_VectorSolutions getSplinePointsIntersect(LC_SplinePoints* l1);
 	RS_VectorSolutions getQuadraticIntersect(RS_Entity const* e1);
 
-	// we will not enable trimming, maybe in the future
-	//void trimStartpoint(const RS_Vector& pos) override;
-	//void trimEndpoint(const RS_Vector& pos) override;
+	void trimStartpoint(const RS_Vector& pos) override;
+	void trimEndpoint(const RS_Vector& pos) override;
+	/** Position of the curve point nearest v along the curve: quad index + t in it. */
+	double curveParam(const RS_Vector& v) const;
 
     LC_SplinePoints* cut(const RS_Vector& pos);
     //! \{ getBoundingRect find bounding rectangle for the bezier segment
