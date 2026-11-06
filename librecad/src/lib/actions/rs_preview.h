@@ -46,6 +46,9 @@ public:
     void addEntity(RS_Entity* entity) override;
     void addCloneOf(RS_Entity* entity);
     virtual void addSelectionFrom(RS_EntityContainer& container);
+    // grip drag preview = addSelectionFrom + moveRef, except that a selected hatch (shown as its bounding box)
+    // moves whole when ref is one of its grips, as RS_Hatch::moveRef does on drop
+    void addSelectionMovedRef(RS_EntityContainer& container, const RS_Vector& ref, const RS_Vector& offset);
     virtual void addAllFrom(RS_EntityContainer& container);
     virtual void addStretchablesFrom(RS_EntityContainer& container,
                                      const RS_Vector& v1, const RS_Vector& v2);

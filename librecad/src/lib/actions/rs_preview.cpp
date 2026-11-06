@@ -30,6 +30,8 @@
 #include "rs_graphicview.h"
 #include "rs_information.h"
 #include "rs_settings.h"
+#include <cmath>
+#include <vector>
 
 /**
  * Constructor.
@@ -149,6 +151,50 @@ void RS_Preview::addSelectionFrom(RS_EntityContainer& container) {
             // clone might be nullptr after this point
         }
     }
+}
+
+/**
+ * Grip drag preview (2026-11-06 · plans-win librecad-factory-drawings step 27).
+ * addSelectionFrom() + moveRef() stretched one corner of a hatch's bounding box, while the drop
+ * (RS_Modification::moveRef -> RS_Hatch::moveRef) moves the whole hatch. Hatches are therefore kept out of
+ * the moveRef and drawn as their bounding box shifted by offset (when ref is one of their grips) or unmoved.
+ */
+void RS_Preview::addSelectionMovedRef(RS_EntityContainer& container, const RS_Vector& ref, const RS_Vector& offset) {
+	std::vector<RS_Entity*> hatches;
+	int c=0;
+	for(auto e: container){
+		if (!e->isSelected() || c>=maxEntities) {
+			continue;
+		}
+		if (e->rtti()==RS2::EntityHatch) {
+			hatches.push_back(e);
+			continue;
+		}
+		RS_Entity* clone = e->clone();
+		clone->setSelected(false);
+		clone->reparent(this);
+		c+=clone->countDeep();
+		addEntity(clone);
+	}
+	moveRef(ref, offset);
+
+	for (RS_Entity* h: hatches) {
+		RS_Vector shift{0., 0.};
+		RS_VectorSolutions const refs = h->getRefPoints();
+		for (size_t i = 0; i < refs.getNumber(); ++i) {
+			// same match test as RS_Hatch::moveRef
+			if (std::abs(refs.get(i).x - ref.x) < 1.0e-4 && std::abs(refs.get(i).y - ref.y) < 1.0e-4) {
+				shift = offset;
+				break;
+			}
+		}
+		RS_Vector const min = h->getMin() + shift;
+		RS_Vector const max = h->getMax() + shift;
+		RS_EntityContainer::addEntity(new RS_Line(this, {min.x, min.y}, {max.x, min.y}));
+		RS_EntityContainer::addEntity(new RS_Line(this, {max.x, min.y}, {max.x, max.y}));
+		RS_EntityContainer::addEntity(new RS_Line(this, {max.x, max.y}, {min.x, max.y}));
+		RS_EntityContainer::addEntity(new RS_Line(this, {min.x, max.y}, {min.x, min.y}));
+	}
 }
 
 /**

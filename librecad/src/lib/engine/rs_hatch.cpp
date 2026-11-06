@@ -778,6 +778,50 @@ void RS_Hatch::move(const RS_Vector& offset) {
     update();
 }
 
+// Grips (2026-11-06 · card librecad-factory-drawings step 27): a selected hatch showed none - RS_Entity::getRefPoints
+// is empty and RS_EntityContainer::getNearestSelectedRef skips children whose parent is selected - and snapping on a
+// hatch is off on purpose (issue #652, ignoredSnap), so a hatch moved off its boundary lines had nothing to grab.
+// The grips are the vertices of the boundary loops (never the pattern container `hatch`): each segment's start
+// point, which in a closed loop is every corner once; a full circle has no start point, so its center. Dragging any
+// grip moves the whole hatch (like a block's insertion point) - it does not reshape the boundary.
+RS_VectorSolutions RS_Hatch::getRefPoints() const {
+    RS_VectorSolutions ret;
+    for (RS_Entity* loop : *this) {
+        if (loop == hatch || !loop->isContainer()) {
+            continue;
+        }
+        for (RS_Entity* e : *static_cast<RS_EntityContainer*>(loop)) {
+            RS_Vector p = e->getStartpoint();
+            if (!p.valid) {
+                p = e->getCenter();
+            }
+            if (p.valid) {
+                ret.push_back(p);
+            }
+        }
+    }
+    return ret;
+}
+
+// RS_EntityContainer's versions look into the loops, whose parent (this hatch) is selected, and find nothing
+RS_Vector RS_Hatch::getNearestRef(const RS_Vector& coord, double* dist) const {
+    return RS_Entity::getNearestRef(coord, dist);
+}
+
+RS_Vector RS_Hatch::getNearestSelectedRef(const RS_Vector& coord, double* dist) const {
+    return RS_Entity::getNearestSelectedRef(coord, dist);
+}
+
+void RS_Hatch::moveRef(const RS_Vector& ref, const RS_Vector& offset) {
+    RS_VectorSolutions const refs = getRefPoints();
+    for (size_t i = 0; i < refs.getNumber(); ++i) {
+        if (std::abs(refs.get(i).x - ref.x) < 1.0e-4 && std::abs(refs.get(i).y - ref.y) < 1.0e-4) {
+            move(offset);
+            return;
+        }
+    }
+}
+
 
 
 void RS_Hatch::rotate(const RS_Vector& center, const double& angle) {

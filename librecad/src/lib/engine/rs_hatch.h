@@ -157,6 +157,14 @@ public:
                          const RS_Vector& secondCorner,
                          const RS_Vector& offset) override;
 
+    // grips = vertices of the boundary loops; dragging one moves the whole hatch (see rs_hatch.cpp)
+    RS_VectorSolutions getRefPoints() const override;
+    RS_Vector getNearestRef(const RS_Vector& coord,
+                            double* dist = nullptr) const override;
+    RS_Vector getNearestSelectedRef(const RS_Vector& coord,
+                                    double* dist = nullptr) const override;
+    void moveRef(const RS_Vector& ref, const RS_Vector& offset) override;
+
     friend std::ostream& operator << (std::ostream& os, const RS_Hatch& p);
 
 private:

@@ -267,8 +267,8 @@ void RS_ActionDefault::mouseMoveEvent(QMouseEvent* e) {
         }
 
         deletePreview();
-        preview->addSelectionFrom(*container);
-		preview->moveRef(pPoints->v1, pPoints->v2 - pPoints->v1);
+        // hatch grips (2026-11-06): moveRef on the preview copy stretched a hatch's bounding box
+        preview->addSelectionMovedRef(*container, pPoints->v1, pPoints->v2 - pPoints->v1);
 
         if (e->modifiers() & Qt::ShiftModifier) {
             RS_Line *line = new RS_Line(pPoints->v1, mouse);
