@@ -1314,32 +1314,40 @@ void RS_FilterDXFRW::addHatch(const DRW_Hatch *data) {
                 }
                 case DRW::ELLIPSE: {
 					DRW_Ellipse *e2 = (DRW_Ellipse *)ent.get();
-                    double ang1 = e2->staparam;
-                    double ang2 = e2->endparam;
-					if ( fabs(ang2 - 2.*M_PI) < 1.0e-10 && fabs(ang1) < 1.0e-10 )
+                    // A clockwise elliptic edge (73 = 0) keeps its values as 360-angle, like a clockwise arc edge
+                    // above (DXF; AutoCAD, ezdxf, and writeHatch below): turned back, the edge stays reversed.
+                    // Until 2026-11-06 libdxfrw never read 73 for an ellipse, so every one was taken counter-
+                    // clockwise - and Mirror (it reverses an ellipse) saved a hatch that reopened as the other part.
+                    const bool full = fabs(e2->endparam - 2.*M_PI) < 1.0e-10 && fabs(e2->staparam) < 1.0e-10;
+                    const bool cw = !full && !e2->isccw;
+                    const double sta = cw ? RS_Math::correctAngle(2.*M_PI - e2->staparam) : e2->staparam;
+                    const double end = cw ? RS_Math::correctAngle(2.*M_PI - e2->endparam) : e2->endparam;
+                    double ang1 = sta;
+                    double ang2 = end;
+					if (full)
                         ang2 = 0.0;
                     else { //convert angle to parameter
                         ang1 = atan(tan(ang1)/e2->ratio);
                         ang2 = atan(tan(ang2)/e2->ratio);
                         if (ang1 < 0){//quadrant 2 & 4
                             ang1 +=M_PI;
-                            if (e2->staparam > M_PI) //quadrant 4
+                            if (sta > M_PI) //quadrant 4
                                 ang1 +=M_PI;
-                        } else if (e2->staparam > M_PI){//3 quadrant
+                        } else if (sta > M_PI){//3 quadrant
                             ang1 +=M_PI;
                         }
                         if (ang2 < 0){//quadrant 2 & 4
                             ang2 +=M_PI;
-                            if (e2->endparam > M_PI) //quadrant 4
+                            if (end > M_PI) //quadrant 4
                                 ang2 +=M_PI;
-                        } else if (e2->endparam > M_PI){//3 quadrant
+                        } else if (end > M_PI){//3 quadrant
                             ang2 +=M_PI;
                         }
                     }
 					e = new RS_Ellipse{hatchLoop,
 					{{e2->basePoint.x, e2->basePoint.y},
 					{e2->secPoint.x, e2->secPoint.y},
-							e2->ratio, ang1, ang2, !e2->isccw}};
+							e2->ratio, ang1, ang2, cw}};
 					break;
                 }
                 default:
@@ -3127,6 +3135,12 @@ void RS_FilterDXFRW::writeHatch(RS_Hatch * h) {
                     double endAng = el->getCenter().angleTo(el->getEndpoint()) - rot;
                     if (startAng < 0) startAng = M_PI*2 + startAng;
                     if (endAng < 0) endAng = M_PI*2 + endAng;
+                    if (el->isReversed() && el->isEllipticArc()) {
+                        // clockwise: 360-angle, as for the arc above and as addHatch reads it (2026-11-06; the plain
+                        // angles were written - ezdxf/AutoCAD take that for the edge mirrored across its major axis)
+                        startAng = 2*M_PI - startAng;
+                        endAng = 2*M_PI - endAng;
+                    }
                     ell->staparam = startAng;
                     ell->endparam = endAng;
                     ell->isccw = !el->isReversed();

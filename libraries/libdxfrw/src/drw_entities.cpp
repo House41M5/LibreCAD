@@ -1791,6 +1791,9 @@ bool DRW_Hatch::parseCode(int code, dxfReader *reader){
         break;
     case 73:
         if (arc) arc->isccw = reader->getInt32();
+        // an elliptic edge has the flag too (DXF: clockwise values stored as 360-angle, like an arc edge); it was
+        // left at its default 1, so a clockwise one read as the other part of the ellipse
+        else if (ellipse) ellipse->isccw = reader->getInt32();
         else if (pline) pline->flags = reader->getInt32();
         break;
     case 75:
