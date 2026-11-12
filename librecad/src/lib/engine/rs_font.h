@@ -39,6 +39,7 @@
 class QRawFont;
 class RS_EntityContainer;
 class RS_GraphicView;
+class RS_Insert;
 class RS_Painter;
 
 /**
@@ -116,7 +117,10 @@ public:
     // Filled letters (Kai 2026-10-17): a TrueType file with the same base name next to
     // the .lff (e.g. thsarabunnew.ttf) is drawn filled at the LFF letter positions.
     // The LFF glyphs stay for layout, borders, snapping and missing glyphs.
-    // @return false when this font has no TrueType companion (caller draws strokes).
+    // Letters of an MTEXT \f{name} run are drawn with their own font's companion, or as
+    // their LFF strokes when that font has none (Kai 2026-11-12).
+    // @return false when neither this font nor a run's font has a TrueType companion
+    // (caller draws strokes).
     bool drawOutline(RS_EntityContainer* text, RS_Painter* painter, RS_GraphicView* view);
     // Advance width of a letter in LFF units from the TrueType companion; -1 when none.
     double outlineAdvance(const QString& name);
@@ -142,6 +146,8 @@ private:
     QPainterPath outlineGlyph(const QString& name);
     void drawOutlineLetters(RS_EntityContainer* container, RS_Painter* painter,
                             RS_GraphicView* view);
+    RS_Font* letterFont(const RS_Insert* letter);
+    bool hasOutlineRun(RS_EntityContainer* container);
 
 private:
     //raw lff font file list, not processed into blocks yet

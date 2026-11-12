@@ -38,6 +38,7 @@
 #include <QTransform>
 
 #include "rs_font.h"
+#include "rs_fontlist.h"
 #include "rs_entitycontainer.h"
 #include "rs_graphicview.h"
 #include "rs_insert.h"
@@ -634,8 +635,40 @@ double RS_Font::outlineAdvance(const QString& name) {
     return adv.size() == 1 ? adv[0].x() * outlineScale : -1.;
 }
 
+/**
+ * The font a letter of a text comes from. RS_MText::update() inserts the letters of
+ * an MTEXT \f{name} run from that font's letter list, the others from this one.
+ * nullptr when no font in the font list owns the letter's block list.
+ */
+RS_Font* RS_Font::letterFont(const RS_Insert* letter) {
+    RS_BlockList* source = letter->getData().blockSource;
+    if (source == nullptr || source == &letterList)
+        return this;
+    for (auto const& f: *RS_FONTLIST) {
+        if (f->getLetterList() == source)
+            return f.get();
+    }
+    return nullptr;
+}
+
+/** @return true when a letter in container comes from another font that has a TrueType companion */
+bool RS_Font::hasOutlineRun(RS_EntityContainer* container) {
+    for (RS_Entity* e: *container) {
+        if (e->rtti() == RS2::EntityInsert) {
+            RS_Font* font = letterFont(static_cast<RS_Insert*>(e));
+            if (font != nullptr && font != this && font->outlineFont)
+                return true;
+        } else if (e->isContainer() && hasOutlineRun(static_cast<RS_EntityContainer*>(e))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool RS_Font::drawOutline(RS_EntityContainer* text, RS_Painter* painter, RS_GraphicView* view) {
-    if (!outlineFont)
+    // An MTEXT in an LFF-only font can still have \f{name} runs in a font with a
+    // TrueType companion (Kai 2026-11-12): those letters are filled, the rest stroked.
+    if (!outlineFont && !hasOutlineRun(text))
         return false;
     const RS_Pen pen = painter->getPen();
     const QBrush brush = painter->brush();
@@ -652,9 +685,14 @@ void RS_Font::drawOutlineLetters(RS_EntityContainer* container, RS_Painter* pain
     for (RS_Entity* e: *container) {
         if (e->rtti() == RS2::EntityInsert) {
             auto letter = static_cast<RS_Insert*>(e);
-            QPainterPath glyph = outlineGlyph(letter->getName());
+            // the letter's own font: an MTEXT \f{name} run has its own shapes (Kai 2026-11-12;
+            // before, every letter took this font's TrueType shape at the run font's advance)
+            RS_Font* font = letterFont(letter);
+            QPainterPath glyph;
+            if (font != nullptr && font->outlineFont)
+                glyph = font->outlineGlyph(letter->getName());
             if (glyph.isEmpty()) {
-                // no TrueType glyph: stroke the LFF letter (e.g. U+FFFD box)
+                // no TrueType glyph: stroke the LFF letter (e.g. U+FFFD box, a run in an LFF-only font)
                 painter->setPen(RS_Color(painter->brush().color()));
                 double offset = 0.;
                 letter->draw(painter, view, offset);
