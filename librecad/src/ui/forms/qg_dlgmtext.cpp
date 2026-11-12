@@ -37,14 +37,16 @@
 
 #include "qg_dlgmtext.h"
 
-#include "lc_textbidi.h"
 #include "rs_system.h"
 #include "rs_settings.h"
 #include "rs_font.h"
 #include "rs_graphic.h"
 #include "rs_math.h"
 
-using lc::textbidi::mirrorByLine;
+// The text box holds the text as it is stored (logical order) in both directions; Qt lays a right-to-left
+// paragraph out itself. It used to hold it mirrored letter by letter (lc::textbidi::mirrorByLine), which
+// reversed Thai/Latin and tore Thai marks off their letters (user 2026-11-12: "Right to Left ... สลับที่กันหมด");
+// RS_MText now keeps left-to-right runs in reading order as well.
 
 /*
  *  Constructs a QG_DlgMText as a child of 'parent', with the
@@ -163,13 +165,8 @@ void QG_DlgMText::destroy() {
         //RS_SETTINGS->writeEntry("/TextWordSpacing", leWordSpacing->text());
         RS_SETTINGS->writeEntry("/TextLineSpacingFactor",
                                 leLineSpacingFactor->text());
-        // The textedit holds the visually-mirrored buffer in RTL mode;
-        // mirror back to logical order so the saved string is portable
-        // and matches what the entity stores.
         const bool ltr = rbLeftToRight->isChecked();
-        const QString visible = teText->toPlainText();
-        RS_SETTINGS->writeEntry("/TextString",
-                                ltr ? visible : mirrorByLine(visible));
+        RS_SETTINGS->writeEntry("/TextString", teText->toPlainText());
         //RS_SETTINGS->writeEntry("/TextShape", getShape());
         RS_SETTINGS->writeEntry("/TextAngle", leAngle->text());
         //RS_SETTINGS->writeEntry("/TextRadius", leRadius->text());
@@ -302,12 +299,9 @@ void QG_DlgMText::setText(RS_MText& t, bool isNew) {
         rbRightToLeft->setChecked(!leftToRight);
     }
     // Apply direction before loading text so freshly created blocks inherit
-    // the correct direction from the document's default text option. In RTL
-    // mode the visible buffer is mirrored by code point so all runs
-    // (including Latin/digits) display reversed — matching the canvas
-    // renderer, which uses the same positional mirror.
+    // the correct direction from the document's default text option.
     applyDirectionVisuals();
-    teText->setPlainText(leftToRight ? str : mirrorByLine(str));
+    teText->setPlainText(str);
     applyDirectionVisuals();
     teText->setFocus();
     teText->selectAll();
@@ -331,11 +325,7 @@ void QG_DlgMText::updateText() {
             )
         );
 #else*/
-        {
-            const bool ltr = rbLeftToRight->isChecked();
-            const QString visible = teText->toPlainText();
-            text->setText(ltr ? visible : mirrorByLine(visible));
-        }
+        text->setText(teText->toPlainText());
 //#endif
         //text->setLetterSpacing(leLetterSpacing.toDouble());
         text->setLineSpacingFactor(leLineSpacingFactor->text().toDouble());
@@ -440,9 +430,7 @@ void QG_DlgMText::load(const QString& fn) {
     }
 
     QTextStream ts(&f);
-    const QString loaded = ts.readAll();
-    const bool ltr = rbLeftToRight->isChecked();
-    teText->setPlainText(ltr ? loaded : mirrorByLine(loaded));
+    teText->setPlainText(ts.readAll());
     applyDirectionVisuals();
 }
 
@@ -454,9 +442,7 @@ void QG_DlgMText::saveText() {
 }
 
 void QG_DlgMText::save(const QString& fn) {
-    const bool ltr = rbLeftToRight->isChecked();
-    const QString visible = teText->toPlainText();
-    const QString text = ltr ? visible : mirrorByLine(visible);
+    const QString text = teText->toPlainText();
     QFile f(fn);
     if (f.open(QIODevice::WriteOnly)) {
         QTextStream t(&f);
@@ -491,17 +477,7 @@ void QG_DlgMText::layoutDirectionChanged() {
     const bool leftToRight = rbLeftToRight->isChecked();
     rbRightToLeft->setChecked(!leftToRight);
 
-    // Flip the visible buffer so the same logical text now reads in the
-    // newly-selected direction. mirrorByLine is involutive, so toggling
-    // back and forth restores the original buffer. The entity's text
-    // field is unchanged here; updateText() rewrites it from the
-    // (mirrored-back) buffer when the user accepts the dialog.
-    {
-        QSignalBlocker textBlocker(teText);
-        const QString visible = teText->toPlainText();
-        teText->setPlainText(mirrorByLine(visible));
-    }
-
+    // The text itself stays as it is: only the paragraph direction changes (applyDirectionVisuals).
     if (text != nullptr) {
         text->setDrawingDirection(
             leftToRight ? RS_MTextData::LeftToRight

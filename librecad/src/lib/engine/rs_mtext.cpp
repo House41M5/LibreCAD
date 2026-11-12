@@ -233,7 +233,44 @@ void RS_MText::update() {
   // right-to-left line the first letter is at the right end.
   const bool flowsFromLeft = data.drawingDirection != RS_MTextData::RightToLeft;
   double leadingAdvance = 0.0;
+
+  // A right-to-left line keeps the reading order of its left-to-right runs (Thai, Latin, digits): a run is
+  // laid out from the left on its own, then put to the left of what the line already has, as a bidi editor
+  // shows it. Letter by letter from the right reversed them and tore Thai marks off their letters (user
+  // 2026-11-12: "Right to Left ... ตัวอักษรมันสลับที่กันหมด"). Right-to-left letters still go from the right.
+  // Blanks and neutral marks after a run are its own only if a left-to-right letter follows them.
+  RS_EntityContainer run(nullptr, false);  // not the owner: the letters move on to the line
+  RS_Vector runPos{0.0, -9.0};
+  QString runPending;  // ' ' = a blank, anything else = a neutral letter
+  const RS_Vector runLetterSpace{std::abs(letterSpace.x), 0.0};
+  const RS_Vector runSpace{std::abs(space.x), 0.0};
+  auto place = [&](const QString &items, RS_EntityContainer &line, const RS_Vector &gap,
+                   const RS_Vector &blank, RS_Vector &pos) {
+    for (const QChar c : items) {
+      if (c == QLatin1Char(' '))
+        pos += blank;
+      else  // laid out from the right: ( ) [ ] < > mirrored, as Qt shows them in the text box (bidi rule L4)
+        addLetter(line, gap.x < 0.0 && c.hasMirrored() ? c.mirroredChar() : c, *font, gap, pos);
+    }
+  };
+  auto flushRun = [&]() {
+    if (run.count() > 0) {
+      // the run spans 0 .. runPos.x - letter spacing; its right end goes where the next letter from the right would
+      const RS_Vector offset{letterPos.x - runPos.x + runLetterSpace.x, 0.0};
+      for (RS_Entity *e : run) {
+        e->move(offset);
+        oneLine->addEntity(e);
+      }
+      run.clear();
+      letterPos.x -= runPos.x;
+      runPos = RS_Vector{0.0, -9.0};
+    }
+    place(runPending, *oneLine, letterSpace, space, letterPos);
+    runPending.clear();
+  };
+
   auto closeLine = [&]() {
+    flushRun();
     updateAddLine(oneLine, lineCounter++, flowsFromLeft ? leadingAdvance : 0.0);
     oneLine = new RS_EntityContainer(this);
     letterPos = RS_Vector(0.0, -9.0);
@@ -251,6 +288,7 @@ void RS_MText::update() {
     // Handle \F not followed by {<codePage>}
     if (data.text.mid(i).startsWith(R"(\F)") &&
         data.text.mid(i).indexOf(R"(^\\[Ff]\{[\d\w]*\})") != 0) {
+      flushRun();
       addLetter(*oneLine, data.text.at(i), *font, letterSpace, letterPos);
       continue;
     } else if (data.text.mid(i).startsWith(R"(\\)")) {
@@ -258,6 +296,7 @@ void RS_MText::update() {
       // "\S" is used for super/subscripts
       // "\P" is used to start a new line
       // "\\S" and "\\P" to get literal strings "\S" and "\P"
+      flushRun();
       addLetter(*oneLine, data.text.at(i++), *font, letterSpace, letterPos);
       continue;
     }
@@ -272,6 +311,10 @@ void RS_MText::update() {
 
     case 0x20:
       // Space:
+      if (run.count() > 0) {  // right to left, after a left-to-right run
+        runPending += QLatin1Char(' ');
+        break;
+      }
       if (oneLine->count() == 0) {
         leadingAdvance += space.x;
       }
@@ -280,6 +323,7 @@ void RS_MText::update() {
 
     case 0x5C: {
       // code (e.g. \S, \P, ..)
+      flushRun();
       ++i;
       if (static_cast<int>(data.text.length()) <= i) {
         continue;
@@ -390,6 +434,24 @@ void RS_MText::update() {
       QChar letter = shaped.at(i);
       if (letter != data.text.at(i) && nullptr == font->findLetter(QString(letter)))
         letter = data.text.at(i);
+      if (!flowsFromLeft) {
+        const QChar::Direction dir = data.text.at(i).direction();
+        const bool rightToLeft = dir == QChar::DirR || dir == QChar::DirAL;
+        if (dir == QChar::DirL || dir == QChar::DirEN || dir == QChar::DirAN ||
+            (dir == QChar::DirNSM && run.count() > 0)) {
+          place(runPending, run, runLetterSpace, runSpace, runPos);
+          runPending.clear();
+          addLetter(run, letter, *font, runLetterSpace, runPos);
+          break;
+        }
+        if (run.count() > 0 && !rightToLeft && dir != QChar::DirNSM) {
+          runPending += letter;  // neutral (- . , ( ) ...): the run's if a left-to-right letter follows
+          break;
+        }
+        flushRun();
+        if (letter.hasMirrored())
+          letter = letter.mirroredChar();
+      }
       addLetter(*oneLine, letter, *font, letterSpace, letterPos);
       break;
     } // outer default
@@ -399,6 +461,7 @@ void RS_MText::update() {
   usedTextHeight -=
           data.height * data.lineSpacingFactor * 5.0 / 3.0 - data.height;
 
+  flushRun();
   updateAddLine(oneLine, lineCounter, flowsFromLeft ? leadingAdvance : 0.0);
 
   forcedCalculateBorders();
