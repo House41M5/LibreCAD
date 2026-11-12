@@ -269,7 +269,9 @@ void QG_DlgMText::setText(RS_MText& t, bool isNew) {
 
         wPen->setPen(text,lay, "Pen");
 
-        leftToRight = text->getDrawingDirection() == RS_MTextData::LeftToRight;
+        // Only RightToLeft is right-to-left, as in RS_MText (flowsFromLeft): ByStyle / TopToBottom - every MTEXT
+        // from AutoCAD (group 72 = 5 or none) - showed "Right to left" and OK turned it RTL, mirrored on screen
+        leftToRight = text->getDrawingDirection() != RS_MTextData::RightToLeft;
     }
 
     cbDefault->setChecked(def=="1");
@@ -290,7 +292,9 @@ void QG_DlgMText::setText(RS_MText& t, bool isNew) {
     //setShape(shape.toInt());
     leAngle->setText(angle);
     //leRadius->setText(radius);
-    text->setDrawingDirection(leftToRight ? RS_MTextData::LeftToRight : RS_MTextData::RightToLeft);
+    if (isNew) {  // an existing MTEXT keeps its own direction (ByStyle stays 72 = 5) until a button is picked
+        text->setDrawingDirection(leftToRight ? RS_MTextData::LeftToRight : RS_MTextData::RightToLeft);
+    }
     {
         QSignalBlocker bL(rbLeftToRight);
         QSignalBlocker bR(rbRightToLeft);
@@ -337,7 +341,11 @@ void QG_DlgMText::updateText() {
         text->setLineSpacingFactor(leLineSpacingFactor->text().toDouble());
         text->setAlignment(getAlignment());
         text->setAngle(RS_Math::deg2rad(leAngle->text().toDouble()));
-        text->setDrawingDirection(rbLeftToRight->isChecked() ? RS_MTextData::LeftToRight : RS_MTextData::RightToLeft);
+        if (!rbLeftToRight->isChecked()) {
+            text->setDrawingDirection(RS_MTextData::RightToLeft);
+        } else if (text->getDrawingDirection() == RS_MTextData::RightToLeft) {
+            text->setDrawingDirection(RS_MTextData::LeftToRight);
+        }  // else LeftToRight / ByStyle / TopToBottom as it was (all drawn left to right)
     }
     if (text && !isNew) {
         text->setPen(wPen->getPen());
