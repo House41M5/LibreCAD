@@ -36,6 +36,8 @@
 //          Test hooks (environment, read once at start-up): LC_DWGOPEN_FILE=<dwg> opens that DWG;
 //          LC_DWGSAVE_TARGET=<dwg> saves the drawing opened on the command line as that DWG without any dialog.
 //          QProcess from a GUI process starts children with CREATE_NO_WINDOW, so no console flashes.
+//          name() is the plugin's name ("เปิด DWG"); boxes on the save path take saveTitle() instead - until
+//          2026-11-18 they all said "เปิด DWG" (seen on Lenovo 11-15 18:30, card librecad-factory-drawings step 44).
 #include "dwgopen.h"
 
 #include <algorithm>
@@ -156,6 +158,11 @@ QString LC_DwgOpen::name() const
     return tr8("เปิด DWG");
 }
 
+QString LC_DwgOpen::saveTitle()
+{
+    return tr8("บันทึกเป็น DWG");
+}
+
 PluginCapabilities LC_DwgOpen::getCapabilities() const
 {
     // No entry in the Plugins menu (see the header). Called once from QC_ApplicationWindow::loadPlugins after the
@@ -224,14 +231,14 @@ void LC_DwgOpen::install()
         QTimer::singleShot(3000, this, [this, autoSave] { saveAsDwg(autoSave); });
 }
 
-bool LC_DwgOpen::runTask(const QStringList &args, const QString &busy, QString *out)
+bool LC_DwgOpen::runTask(const QStringList &args, const QString &title, const QString &busy, QString *out)
 {
     QMainWindow *win = mainWindow();
     const QString python = findPython();
     const QString tools = QDir::homePath() + QStringLiteral("/dxf-tools");
     const QString script = tools + QStringLiteral("/dwgtask.py");
     if (python.isEmpty() || !QFileInfo::exists(script)) {
-        QMessageBox::warning(win, name(),
+        QMessageBox::warning(win, title,
                              tr8("ต้องมี Python (python.org) ที่ลง ezdxf แล้ว และ %1").arg(QDir::toNativeSeparators(script)));
         return false;
     }
@@ -245,7 +252,7 @@ bool LC_DwgOpen::runTask(const QStringList &args, const QString &busy, QString *
     proc.setProcessChannelMode(QProcess::MergedChannels);
 
     QProgressDialog dlg(busy, QString(), 0, 0, win);
-    dlg.setWindowTitle(name());
+    dlg.setWindowTitle(title);
     dlg.setWindowModality(Qt::WindowModal);
     dlg.setMinimumDuration(0);
     dlg.setCancelButton(nullptr);
@@ -284,7 +291,7 @@ bool LC_DwgOpen::runTask(const QStringList &args, const QString &busy, QString *
         const QString why = timedOut ? tr8("ทำงานนานเกิน %1 วินาที — หยุดแล้ว").arg(kTimeoutMs / 1000)
                           : proc.error() == QProcess::FailedToStart ? tr8("เรียก %1 ไม่ได้").arg(python)
                                                                      : tr8("แปลงไม่สำเร็จ (rc %1)").arg(proc.exitCode());
-        QMessageBox::warning(win, name(), why + QStringLiteral("\n\n") + lastLines(log, 15));
+        QMessageBox::warning(win, title, why + QStringLiteral("\n\n") + lastLines(log, 15));
         return false;
     }
     return true;
@@ -335,7 +342,7 @@ void LC_DwgOpen::openDwg(const QString &dwg)
     }
 
     QString out;
-    if (!runTask({QStringLiteral("dwg"), src.absoluteFilePath()},
+    if (!runTask({QStringLiteral("dwg"), src.absoluteFilePath()}, name(),
                  tr8("กำลังแปลง %1 …\n(ไฟล์ใหญ่ใช้ราว 15 วินาที)").arg(src.fileName()), &out))
         return;
     if (win && win->statusBar())
@@ -370,7 +377,7 @@ QString LC_DwgOpen::activeDxfPath(QMdiSubWindow *sub)
         return found.first();
     if (found.size() > 1) {
         bool ok = false;
-        const QString pick = QInputDialog::getItem(win, name(), tr8("มีไฟล์ชื่อ %1 หลายที่ — แบบที่เปิดอยู่คือไฟล์ไหน").arg(shown),
+        const QString pick = QInputDialog::getItem(win, saveTitle(), tr8("มีไฟล์ชื่อ %1 หลายที่ — แบบที่เปิดอยู่คือไฟล์ไหน").arg(shown),
                                                    found, 0, false, &ok);
         return ok ? pick : QString();
     }
@@ -387,7 +394,7 @@ void LC_DwgOpen::saveAsDwg(const QString &presetTarget)
     QMdiArea *mdi = win ? win->findChild<QMdiArea *>() : nullptr;
     QMdiSubWindow *sub = mdi ? mdi->activeSubWindow() : nullptr;
     if (!sub) {
-        QMessageBox::information(win, name(), tr8("ยังไม่มีแบบเปิดอยู่"));
+        QMessageBox::information(win, saveTitle(), tr8("ยังไม่มีแบบเปิดอยู่"));
         return;
     }
 
@@ -396,7 +403,7 @@ void LC_DwgOpen::saveAsDwg(const QString &presetTarget)
     if (!test && (unnamed || sub->isWindowModified())) {
         QAction *saveAct = win->findChild<QAction *>(unnamed ? QStringLiteral("FileSaveAs") : QStringLiteral("FileSave"));
         if (!unnamed) {
-            QMessageBox box(QMessageBox::Question, name(),
+            QMessageBox box(QMessageBox::Question, saveTitle(),
                             tr8("แบบนี้มีการแก้ที่ยังไม่ได้บันทึก (LibreCAD ขึ้น * ทันทีที่เปิดไฟล์ แม้ยังไม่ได้แก้)\n\n"
                                 "DWG จะทำจากไฟล์ DXF ที่บันทึกไว้"),
                             QMessageBox::NoButton, win);
@@ -412,11 +419,11 @@ void LC_DwgOpen::saveAsDwg(const QString &presetTarget)
                 return;
             }
         } else if (saveAct) {
-            QMessageBox::information(win, name(), tr8("แบบนี้ยังไม่เคยบันทึก — บันทึกเป็นไฟล์ .dxf ก่อน แล้วจะแปลงเป็น DWG ต่อ"));
+            QMessageBox::information(win, saveTitle(), tr8("แบบนี้ยังไม่เคยบันทึก — บันทึกเป็นไฟล์ .dxf ก่อน แล้วจะแปลงเป็น DWG ต่อ"));
             saveAct->trigger();
         }
         if (!tabFileName(sub).endsWith(QStringLiteral(".dxf"), Qt::CaseInsensitive)) {
-            QMessageBox::information(win, name(), tr8("ยังไม่ได้บันทึกเป็นไฟล์ .dxf — ยกเลิกการบันทึกเป็น DWG"));
+            QMessageBox::information(win, saveTitle(), tr8("ยังไม่ได้บันทึกเป็นไฟล์ .dxf — ยกเลิกการบันทึกเป็น DWG"));
             return;
         }
     }
@@ -445,13 +452,13 @@ void LC_DwgOpen::saveAsDwg(const QString &presetTarget)
     }
 
     QString out;
-    if (!runTask({QStringLiteral("todwg"), dxf, QFileInfo(target).absoluteFilePath()},
+    if (!runTask({QStringLiteral("todwg"), dxf, QFileInfo(target).absoluteFilePath()}, saveTitle(),
                  tr8("กำลังบันทึก %1 เป็น DWG …").arg(QFileInfo(dxf).fileName()), &out))
         return;
     if (win->statusBar())
         win->statusBar()->showMessage(tr8("บันทึก DWG แล้ว: %1").arg(QDir::toNativeSeparators(out)), 15000);
     if (!test)
-        QMessageBox::information(win, name(),
+        QMessageBox::information(win, saveTitle(),
                                  tr8("บันทึกแล้ว: %1\n\nแบบ AutoCAD 2000 · ทำจาก %2\n"
                                      "ถ้ามี DWG ชื่อนี้อยู่ก่อน ไฟล์เดิมถูกเก็บเป็น .bak-<เวลา> ข้างไฟล์")
                                      .arg(QDir::toNativeSeparators(out), QDir::toNativeSeparators(dxf)));
