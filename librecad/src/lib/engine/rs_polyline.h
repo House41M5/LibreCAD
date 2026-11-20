@@ -29,6 +29,8 @@
 #define RS_POLYLINE_H
 
 #include <memory>
+#include <utility>
+#include <vector>
 #include "rs_entity.h"
 #include "rs_entitycontainer.h"
 
@@ -45,6 +47,13 @@ struct RS_PolylineData : public RS_Flags {
 
     RS_Vector startpoint;
     RS_Vector endpoint;
+    // Polyline width (kai fork 2026-11-20, plantlib card librecad-factory-drawings step 57 ข): DXF 43 of an
+    // LWPOLYLINE (one width for every segment; AutoCAD lets it win over the vertices' own) and each vertex's 40 / 41
+    // (start / end width of the segment that starts there; POLYLINE: its 40 / 41 when a vertex has none). Read and
+    // written by rs_filterdxfrw.cpp, drawn as a filled band by RS_Polyline::draw. The vertex list counts as valid only
+    // while it has one entry per vertex - an edit that changes the vertex count leaves the per-vertex widths unused.
+    double constWidth = 0.;
+    std::vector<std::pair<double, double>> widths;
 };
 
 std::ostream& operator << (std::ostream& os, const RS_PolylineData& pd);
@@ -141,9 +150,18 @@ public:
 
     friend std::ostream& operator << (std::ostream& os, const RS_Polyline& l);
 
+    /** @return true when the polyline has a width to draw (constant, or valid per-vertex widths not all 0) */
+    bool hasWidth() const;
+
 protected:
     std::unique_ptr<RS_Entity> createVertex(const RS_Vector& v,
                 double bulge=0.0, bool prepend=false);
+    /** the width band, filled with the pen colour, under the centre line (kai fork, step 57 ข) */
+    void drawWidth(RS_Painter* painter, RS_GraphicView* view) const;
+    /** start / end width of segment k, from the constant width or the vertex list */
+    std::pair<double, double> segmentWidth(size_t k) const;
+    /** number of vertices the per-vertex widths must have: segments + 1 when open */
+    size_t widthVertexCount() const;
 
 protected:
     RS_PolylineData data;

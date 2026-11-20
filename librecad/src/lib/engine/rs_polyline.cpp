@@ -23,9 +23,15 @@
 ** This copyright notice MUST APPEAR in all copies of the script!
 **
 **********************************************************************/
+#include<algorithm>
 #include<cassert>
 #include<cmath>
 #include<iostream>
+
+#include <QBrush>
+#include <QPainterPath>
+#include <QPainterPathStroker>
+#include <QPolygonF>
 
 #include "rs_polyline.h"
 
@@ -36,6 +42,37 @@
 #include "rs_line.h"
 #include "rs_math.h"
 #include "rs_painter.h"
+#include "rs_pen.h"
+
+namespace {
+// Polyline width (kai fork 2026-11-20, plantlib card librecad-factory-drawings step 57 ข): the segments in order -
+// segment k starts at vertex k (RS_Polyline makes one line / arc per vertex, the closing one last)
+std::vector<const RS_Entity*> widthSegments(const RS_EntityContainer& c) {
+    std::vector<const RS_Entity*> segs;
+    for (const RS_Entity* e: c) {
+        if (e != nullptr && (e->rtti() == RS2::EntityLine || e->rtti() == RS2::EntityArc))
+            segs.push_back(e);
+    }
+    return segs;
+}
+
+// world points along a segment, from its start: a line's two ends, an arc split so each chord sits well under a pixel
+// from the arc at this zoom (pxPerUnit)
+std::vector<RS_Vector> widthSegmentPoints(const RS_Entity* e, double pxPerUnit) {
+    if (e->rtti() != RS2::EntityArc)
+        return {e->getStartpoint(), e->getEndpoint()};
+    const auto* a = static_cast<const RS_Arc*>(e);
+    const double r = a->getRadius();
+    const double sweep = a->getAngleLength();
+    const int n = std::clamp(static_cast<int>(std::ceil(sweep * std::sqrt(std::max(1., r * pxPerUnit)))), 2, 720);
+    const double dir = a->isReversed() ? -1. : 1.;
+    std::vector<RS_Vector> pts;
+    pts.reserve(n + 1);
+    for (int i = 0; i <= n; ++i)
+        pts.push_back(a->getCenter() + RS_Vector::polar(r, a->getAngle1() + dir * sweep * i / n));
+    return pts;
+}
+}
 
 RS_PolylineData::RS_PolylineData(const RS_Vector& _startpoint,
 				const RS_Vector& _endpoint,
@@ -639,6 +676,13 @@ void RS_Polyline::scale(const RS_Vector& center, const RS_Vector& factor) {
     RS_EntityContainer::scale(center, factor);
     data.startpoint.scale(center, factor);
     data.endpoint.scale(center, factor);
+    // widths scale with the drawing (AutoCAD SCALE; a block inserted at a scale) - one factor: a band has no direction
+    const double f = std::sqrt(std::abs(factor.x * factor.y));
+    data.constWidth *= f;
+    for (auto& w: data.widths) {
+        w.first *= f;
+        w.second *= f;
+    }
     calculateBorders();
 }
 
@@ -670,6 +714,10 @@ void RS_Polyline::revertDirection() {
 	RS_Vector tmp = data.startpoint;
 	data.startpoint = data.endpoint;
 	data.endpoint = tmp;
+	// per-vertex widths follow the vertex order: kept only when they are all the same (the order does not matter)
+	if (!data.widths.empty() && std::any_of(data.widths.begin(), data.widths.end(),
+	                                        [&](const auto& w) { return w != data.widths.front(); }))
+		data.widths.clear();
 }
 
 void RS_Polyline::stretch(const RS_Vector& firstCorner,
@@ -695,6 +743,8 @@ void RS_Polyline::draw(RS_Painter* painter,RS_GraphicView* view, double& /*patte
 
     if (painter == nullptr || view == nullptr)
 	    return;
+    if (hasWidth())
+        drawWidth(painter, view);
     // Issue #2326, directly draw entities, as RS_Painter::drawPolyline() may have precision issues
     double offset = 0.;
     for(RS_Entity* e: std::as_const(*this)) {
@@ -704,6 +754,120 @@ void RS_Polyline::draw(RS_Painter* painter,RS_GraphicView* view, double& /*patte
 }
 
 
+
+
+size_t RS_Polyline::widthVertexCount() const {
+    return widthSegments(*this).size() + (isClosed() ? 0 : 1);
+}
+
+bool RS_Polyline::hasWidth() const {
+    if (data.constWidth > 0.)
+        return true;
+    if (data.widths.empty() || data.widths.size() != widthVertexCount())
+        return false;
+    return std::any_of(data.widths.begin(), data.widths.end(),
+                       [](const auto& w) { return w.first > 0. || w.second > 0.; });
+}
+
+std::pair<double, double> RS_Polyline::segmentWidth(size_t k) const {
+    if (data.constWidth > 0.)
+        return {data.constWidth, data.constWidth};
+    if (k < data.widths.size())
+        return data.widths[k];
+    return {0., 0.};
+}
+
+/**
+ * Polyline width (kai fork 2026-11-20, plantlib card librecad-factory-drawings step 57 ข - user "ทำทาง ข"): LibreCAD
+ * read no width, so a donut junction dot was a hollow ring and a wide border a thin line. The band is filled with the
+ * pen colour (selected / highlighted too) before the centre line, the way RS_Hatch fills a solid hatch. One width all
+ * along: one stroked path - flat ends at the end vertices and mitred joints, as AutoCAD draws it. Widths that change
+ * (tapers, per-segment widths): each segment its own band, the width linear along it (no joint between them).
+ * Gotchas: the borders stay the centre line's (zoom to extents can cut half a band); a linetype does not dash the band.
+ */
+void RS_Polyline::drawWidth(RS_Painter* painter, RS_GraphicView* view) const {
+    // dxf-tools dwgtask.py looks for this text in the LibreCAD.exe that runs it: a build that draws polyline widths
+    // gets no width fills from dwg2lc.py (--no-widthfill, card step 57). Printed at debug level only - used, so the
+    // linker keeps it.
+    static bool marked = false;
+    if (!marked) {
+        RS_DEBUG->print(RS_Debug::D_DEBUGGING, "KAI-FEATURE:polyline-width");
+        marked = true;
+    }
+    const auto segs = widthSegments(*this);
+    if (segs.empty())
+        return;
+    const double px = view->toGuiDX(1.0);
+    auto gui = [view](const RS_Vector& v) {
+        const RS_Vector g = view->toGui(v);
+        return QPointF(g.x, g.y);
+    };
+    const auto w0 = segmentWidth(0);
+    bool uniform = true;
+    for (size_t k = 0; k < segs.size() && uniform; ++k) {
+        const auto w = segmentWidth(k);
+        uniform = std::abs(w.first - w0.first) < RS_TOLERANCE && std::abs(w.second - w0.first) < RS_TOLERANCE;
+    }
+    const RS_Pen pen = painter->getPen();
+    const QBrush brush = painter->brush();
+    painter->setBrush(pen.getColor());
+    painter->disablePen();
+    if (uniform) {
+        if (w0.first > 0.) {
+            QPainterPath line;
+            for (size_t k = 0; k < segs.size(); ++k) {
+                const auto pts = widthSegmentPoints(segs[k], px);
+                for (size_t i = 0; i < pts.size(); ++i) {
+                    if (k == 0 && i == 0)
+                        line.moveTo(gui(pts[i]));
+                    else if (i > 0)
+                        line.lineTo(gui(pts[i]));
+                }
+            }
+            if (isClosed())
+                line.closeSubpath();
+            QPainterPathStroker stroker;
+            stroker.setWidth(w0.first * px);
+            stroker.setCapStyle(Qt::FlatCap);
+            stroker.setJoinStyle(Qt::MiterJoin);
+            stroker.setMiterLimit(50.);
+            QPainterPath band = stroker.createStroke(line);
+            band.setFillRule(Qt::WindingFill);
+            painter->drawPath(band);
+        }
+    } else {
+        for (size_t k = 0; k < segs.size(); ++k) {
+            const auto w = segmentWidth(k);
+            if (w.first <= 0. && w.second <= 0.)
+                continue;
+            const auto pts = widthSegmentPoints(segs[k], px);
+            std::vector<double> along(pts.size(), 0.);
+            for (size_t i = 1; i < pts.size(); ++i)
+                along[i] = along[i - 1] + pts[i].distanceTo(pts[i - 1]);
+            const double len = along.back();
+            if (len <= RS_TOLERANCE)
+                continue;
+            const bool arc = segs[k]->rtti() == RS2::EntityArc;
+            const RS_Vector c = arc ? static_cast<const RS_Arc*>(segs[k])->getCenter() : RS_Vector(0., 0.);
+            const RS_Vector d = pts.back() - pts.front();
+            const RS_Vector nLine = RS_Vector(-d.y, d.x).normalized();
+            QPolygonF left, right;
+            for (size_t i = 0; i < pts.size(); ++i) {
+                const RS_Vector n = arc ? (pts[i] - c).normalized() : nLine;
+                const double half = 0.5 * (w.first + (w.second - w.first) * along[i] / len);
+                left << gui(pts[i] + n * half);
+                right.prepend(gui(pts[i] - n * half));
+            }
+            QPainterPath band;
+            band.addPolygon(left + right);
+            band.closeSubpath();
+            band.setFillRule(Qt::WindingFill);
+            painter->drawPath(band);
+        }
+    }
+    painter->setBrush(brush);
+    painter->setPen(pen);
+}
 
 
 /**

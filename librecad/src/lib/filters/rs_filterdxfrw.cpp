@@ -23,6 +23,7 @@
 **
 **********************************************************************/
 
+#include<algorithm>
 #include<cstdlib>
 #include <QStringList>
 #include <QTextCodec>
@@ -668,6 +669,13 @@ void RS_FilterDXFRW::addLWPolyline(const DRW_LWPolyline& data) {
     RS_PolylineData d(RS_Vector{},
                       RS_Vector{},
                       data.flags&0x1);
+    // Polyline width (kai fork 2026-11-20, step 57 ข): 43 and the vertices' 40 / 41 were dropped here - a donut
+    // junction dot came out a hollow ring. Kept on the polyline, drawn and written back (writeLWPolyline).
+    d.constWidth = data.width;
+    for (auto const& v: data.vertlist)
+        d.widths.emplace_back(v->stawidth, v->endwidth);
+    if (std::none_of(d.widths.begin(), d.widths.end(), [](const auto& w) { return w.first != 0. || w.second != 0.; }))
+        d.widths.clear();
     RS_Polyline *polyline = new RS_Polyline(currentContainer, d);
     setEntityAttributes(polyline, &data);
 
@@ -695,6 +703,16 @@ void RS_FilterDXFRW::addPolyline(const DRW_Polyline& data) {
     RS_PolylineData d(RS_Vector{},
                       RS_Vector{},
                       data.flags&0x1);
+    // Polyline width (kai fork 2026-11-20, step 57 ข): a vertex's own 40 / 41, else the polyline's (AutoCAD's default
+    // widths for vertices that have none)
+    for (auto const& v: data.vertlist) {
+        if (v->stawidth != 0. || v->endwidth != 0.)
+            d.widths.emplace_back(v->stawidth, v->endwidth);
+        else
+            d.widths.emplace_back(data.defstawidth, data.defendwidth);
+    }
+    if (std::none_of(d.widths.begin(), d.widths.end(), [](const auto& w) { return w.first != 0. || w.second != 0.; }))
+        d.widths.clear();
     RS_Polyline *polyline = new RS_Polyline(currentContainer, d);
     setEntityAttributes(polyline, &data);
 
@@ -2444,6 +2462,17 @@ void RS_FilterDXFRW::writeLWPolyline(RS_Polyline* l) {
                                   ae->getEndpoint().y, bulge));
     }
     pol.vertexnum = pol.vertlist.size();
+    // Polyline width (kai fork 2026-11-20, step 57 ข): 43, or each vertex's 40 / 41 while the list still has one entry
+    // per vertex (an edit that changed the vertex count leaves them out)
+    const RS_PolylineData pd = l->getData();
+    if (pd.constWidth > 0.) {
+        pol.width = pd.constWidth;
+    } else if (pd.widths.size() == pol.vertlist.size()) {
+        for (size_t k = 0; k < pd.widths.size(); ++k) {
+            pol.vertlist[k]->stawidth = pd.widths[k].first;
+            pol.vertlist[k]->endwidth = pd.widths[k].second;
+        }
+    }
     getEntityAttributes(&pol, l);
     dxfW->writeLWPolyline(&pol);
 }
@@ -2485,6 +2514,16 @@ void RS_FilterDXFRW::writePolyline(RS_Polyline* p) {
         }
         pol.addVertex( DRW_Vertex(ae->getEndpoint().x,
                                   ae->getEndpoint().y, 0.0, bulge));
+    }
+    // Polyline width (kai fork 2026-11-20, step 57 ข): R12 has no 43 - the polyline's default 40 / 41 carry it
+    const RS_PolylineData pd = p->getData();
+    if (pd.constWidth > 0.) {
+        pol.defstawidth = pol.defendwidth = pd.constWidth;
+    } else if (pd.widths.size() == pol.vertlist.size()) {
+        for (size_t k = 0; k < pd.widths.size(); ++k) {
+            pol.vertlist[k]->stawidth = pd.widths[k].first;
+            pol.vertlist[k]->endwidth = pd.widths[k].second;
+        }
     }
     getEntityAttributes(&pol, p);
     dxfW->writePolyline(&pol);
