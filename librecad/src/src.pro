@@ -208,6 +208,7 @@ HEADERS += \
     lib/engine/rs_solid.h \
     lib/engine/rs_spline.h \
     lib/engine/lc_splinepoints.h \
+    lib/engine/lc_hatchpick.h \
     lib/engine/rs_system.h \
     lib/engine/rs_text.h \
     lib/engine/rs_undo.h \
@@ -366,6 +367,7 @@ SOURCES += \
     lib/engine/rs_solid.cpp \
     lib/engine/rs_spline.cpp \
     lib/engine/lc_splinepoints.cpp \
+    lib/engine/lc_hatchpick.cpp \
     lib/engine/rs_system.cpp \
     lib/engine/rs_text.cpp \
     lib/engine/rs_undo.cpp \

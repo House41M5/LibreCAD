@@ -33,6 +33,7 @@
 #include "rs_information.h"
 #include "rs_hatch.h"
 #include "rs_debug.h"
+#include "lc_hatchpick.h"
 
 RS_ActionDrawHatch::RS_ActionDrawHatch(RS_EntityContainer& container, RS_GraphicView& graphicView)
                                 :RS_PreviewActionInterface("Draw Hatch", container, graphicView)
@@ -49,16 +50,113 @@ void RS_ActionDrawHatch::setShowArea(bool s){
 
 void RS_ActionDrawHatch::init(int status) {
     RS_ActionInterface::init(status);
+    // kai fork: PickPoint is entered from here; < 0 = finishing (before, any status showed the dialog again)
+    if (status != ShowDialog)
+        return;
 
 	RS_Hatch tmp(container, *data);
     tmp.setLayerToActive();
     tmp.setPenToActive();
-    if (RS_DIALOGFACTORY->requestHatchDialog(&tmp)) {
-		*data = tmp.getData();
-        trigger();
-        graphicView->redraw(RS2::RedrawDrawing); 
+    if (!RS_DIALOGFACTORY->requestHatchDialog(&tmp)) {
+        finish(false);
+        return;
     }
-    finish(false);
+    *data = tmp.getData();
+    if (hasContourSelection()) {  // the boundary was selected first: as before
+        trigger();
+        graphicView->redraw(RS2::RedrawDrawing);
+        finish(false);
+        return;
+    }
+    // nothing selected: click inside the areas, as AutoCAD's "Pick internal point"
+    setStatus(PickPoint);
+    RS_DIALOGFACTORY->commandMessage(tr("Hatch: click inside each area to hatch (right click / Esc = done). "
+                                        "Only what is on screen is used as boundary."));
+}
+
+/**
+ * kai fork: is there a selected entity that can bound a hatch (trigger() drops hatches, points, text and
+ * dimensions from the selection)?
+ */
+bool RS_ActionDrawHatch::hasContourSelection() {
+    for (RS_Entity* e : *container) {
+        if (e == nullptr || !e->isSelected())
+            continue;
+        const RS2::EntityType t = e->rtti();
+        if (t == RS2::EntityHatch || t == RS2::EntityPoint || t == RS2::EntityMText || t == RS2::EntityText
+            || RS_Information::isDimension(t))
+            continue;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * kai fork: hatch the closed area around p (lc_hatchpick: boundary from what is on screen, with islands).
+ */
+void RS_ActionDrawHatch::pick(const RS_Vector& p) {
+    const RS_Vector vMin = graphicView->toGraph(0, graphicView->getHeight());
+    const RS_Vector vMax = graphicView->toGraph(graphicView->getWidth(), 0);
+    std::unique_ptr<RS_Hatch> hatch = std::make_unique<RS_Hatch>(container, *data);
+    hatch->setLayerToActive();
+    hatch->setPenToActive();
+    QString error;
+    int islands = 0;
+    if (!LC_HatchPick::addLoops(container, p, vMin, vMax, hatch.get(), &error, &islands)) {
+        RS_DIALOGFACTORY->commandMessage(error);
+        return;
+    }
+    if (!hatch->validate()) {
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch: the boundary found around the point is not closed"));
+        return;
+    }
+    // drawn first = behind its boundary and the text in it (AutoCAD HPDRAWORDER "send behind boundary"; at the end
+    // of the list a solid fill hid lettering drawn as lines, 16-MAYr1 2026-11-20); saved first in the DXF as well
+    container->insertEntity(0, hatch.get());
+    if (document) {
+        document->startUndoCycle();
+        document->addUndoable(hatch.get());
+        document->endUndoCycle();
+    }
+    hatch->update();
+    graphicView->redraw(RS2::RedrawDrawing);
+    RS_DIALOGFACTORY->commandMessage(tr("Hatch boundary: %1 loop(s), islands %2")
+                                     .arg(hatch->countLoops()).arg(islands));
+    report(hatch.get());
+    hatch.release();
+}
+
+/**
+ * The result of hatch->update() on the command line (was inline in trigger()).
+ */
+void RS_ActionDrawHatch::report(RS_Hatch* hatch) {
+    bool printArea = true;
+    switch( hatch->getUpdateError()) {
+    case RS_Hatch::HATCH_OK :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch created successfully."));
+        break;
+    case RS_Hatch::HATCH_INVALID_CONTOUR :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Invalid contour found!"));
+        printArea = false;
+        break;
+    case RS_Hatch::HATCH_PATTERN_NOT_FOUND :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Pattern not found!"));
+        break;
+    case RS_Hatch::HATCH_TOO_SMALL :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Contour or pattern too small!"));
+        break;
+    case RS_Hatch::HATCH_AREA_TOO_BIG :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Contour too big!"));
+        break;
+    default :
+        RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Undefined Error!"));
+        printArea = false;
+        break;
+    }
+    if(m_bShowArea && printArea){
+        RS_DIALOGFACTORY->commandMessage(tr("Total hatch area = %1").
+                                         arg(hatch->getTotalArea(),12,'g',10));
+    }
 }
 
 void RS_ActionDrawHatch::trigger() {
@@ -144,33 +242,7 @@ void RS_ActionDrawHatch::trigger() {
 
 		graphicView->redraw(RS2::RedrawDrawing);
 
-		bool printArea = true;
-        switch( hatch->getUpdateError()) {
-        case RS_Hatch::HATCH_OK :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch created successfully."));
-            break;
-        case RS_Hatch::HATCH_INVALID_CONTOUR :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Invalid contour found!"));
-			printArea = false;
-            break;
-        case RS_Hatch::HATCH_PATTERN_NOT_FOUND :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Pattern not found!"));
-            break;
-        case RS_Hatch::HATCH_TOO_SMALL :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Contour or pattern too small!"));
-            break;
-        case RS_Hatch::HATCH_AREA_TOO_BIG :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Contour too big!"));
-            break;
-        default :
-            RS_DIALOGFACTORY->commandMessage(tr("Hatch Error: Undefined Error!"));
-			printArea = false;
-            break;
-        }
-		if(m_bShowArea && printArea){
-            RS_DIALOGFACTORY->commandMessage(tr("Total hatch area = %1").
-                                             arg(hatch->getTotalArea(),12,'g',10));
-        }
+		report(hatch.get());
 
 		hatch.release();
 
@@ -208,29 +280,33 @@ void RS_ActionDrawHatch::mouseMoveEvent(QMouseEvent*) {
 
 void RS_ActionDrawHatch::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button()==Qt::LeftButton) {
-		snapPoint(e);
-
         switch (getStatus()) {
-        case ShowDialog:
+        case PickPoint:  // the point as clicked, not snapped (a snap would move it onto the boundary)
+            pick(graphicView->toGraph(e->x(), e->y()));
             break;
 
         default:
+            snapPoint(e);
             break;
         }
     } else if (e->button()==Qt::RightButton) {
         //deletePreview();
-        init(getStatus()-1);
+        // kai fork: PickPoint ends here (going back one status would show the dialog again)
+        init(getStatus()==PickPoint ? -1 : getStatus()-1);
     }
 }
 
 
 
 void RS_ActionDrawHatch::updateMouseButtonHints() {
-	RS_DIALOGFACTORY->updateMouseWidget();
+    if (getStatus() == PickPoint)
+        RS_DIALOGFACTORY->updateMouseWidget(tr("Click inside an area to hatch"), tr("Done"));
+    else
+        RS_DIALOGFACTORY->updateMouseWidget();
 }
 
 void RS_ActionDrawHatch::updateMouseCursor() {
-    graphicView->setMouseCursor(RS2::SelectCursor);
+    graphicView->setMouseCursor(getStatus() == PickPoint ? RS2::CadCursor : RS2::SelectCursor);
 }
 
 // EOF

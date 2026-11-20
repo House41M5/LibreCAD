@@ -676,12 +676,9 @@ RS_ActionInterface* QG_ActionHandler::setCurrentAction(RS2::ActionType id) {
         a = new RS_ActionDrawText(*document, *view);
         break;
     case RS2::ActionDrawHatch:
-        if(!document->countSelected())
-        {
-            a = new RS_ActionSelect(this, *document, *view, RS2::ActionDrawHatchNoSelect);
-            break;
-        }
-        // fall-through
+        // kai fork (hatch by picking a point, lc_hatchpick): nothing selected = the hatch dialog, then click inside
+        // the areas, as AutoCAD's HATCH; before, it went to "select the boundary, then Enter" first. Selecting
+        // the boundary before Hatch still works (RS_ActionDrawHatch uses the selection).
 	case RS2::ActionDrawHatchNoSelect:
 		a = new RS_ActionDrawHatch(*document, *view);
         break;   

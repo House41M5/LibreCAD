@@ -30,6 +30,8 @@
 #include "rs_previewactioninterface.h"
 
 struct RS_HatchData;
+class RS_Hatch;
+class RS_Vector;
 
 /**
  * This action class can handle user events to draw hatches.
@@ -43,7 +45,9 @@ class RS_ActionDrawHatch : public RS_PreviewActionInterface {
      * Action States.
      */
     enum Status {
-        ShowDialog           /**< Showing the hatch dialog. */
+        ShowDialog,          /**< Showing the hatch dialog. */
+        PickPoint            /**< Nothing was selected: click inside the areas to hatch (kai fork, AutoCAD
+                                  "Pick internal point" - lc_hatchpick) */
     };
 
 public:
@@ -60,6 +64,10 @@ public:
 	void setShowArea(bool s);
 
 private:
+	bool hasContourSelection();
+	void pick(const RS_Vector& p);
+	void report(RS_Hatch* hatch);
+
 	std::unique_ptr<RS_HatchData> data;
 	bool m_bShowArea{true};
 };
